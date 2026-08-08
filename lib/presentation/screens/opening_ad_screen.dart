@@ -12,7 +12,10 @@ import '../widgets/grid_pattern_painter.dart';
 import '../widgets/pressable.dart';
 import '../widgets/surfaces.dart';
 
-/// Opening Screen Advertisement showcase matching Light & Dark design specs.
+/// Opening Screen Advertisement showcase.
+///
+/// Both layouts read the semantic token set, so light and dark are the same
+/// code resolved against a different theme rather than two colour tables.
 class OpeningAdScreen extends ConsumerStatefulWidget {
   const OpeningAdScreen({super.key});
 
@@ -29,10 +32,9 @@ class _OpeningAdScreenState extends ConsumerState<OpeningAdScreen>
   @override
   void initState() {
     super.initState();
-    _animController = AnimationController(
-      vsync: this,
-      duration: Motion.medium,
-    );
+    // Storytelling: the advertisement fades and rises once on entry, so the
+    // offer arrives as one surface instead of assembling in front of the reader.
+    _animController = AnimationController(vsync: this, duration: Motion.medium);
 
     _fadeAnim = CurvedAnimation(
       parent: _animController,
@@ -42,16 +44,16 @@ class _OpeningAdScreenState extends ConsumerState<OpeningAdScreen>
     _slideAnim = Tween<Offset>(
       begin: const Offset(0, 0.06),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animController,
-      curve: Motion.emphasized,
-    ));
+    ).animate(
+      CurvedAnimation(parent: _animController, curve: Motion.emphasized),
+    );
 
     _animController.forward();
   }
 
   @override
   void dispose() {
+    // Req 2.9: the entrance controller is released with the screen.
     _animController.dispose();
     super.dispose();
   }
@@ -73,7 +75,6 @@ class _OpeningAdScreenState extends ConsumerState<OpeningAdScreen>
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final isDark = tokens.isDark;
 
     return Scaffold(
       backgroundColor: tokens.background,
@@ -87,13 +88,10 @@ class _OpeningAdScreenState extends ConsumerState<OpeningAdScreen>
               }
               return FadeTransition(
                 opacity: _fadeAnim,
-                child: SlideTransition(
-                  position: _slideAnim,
-                  child: child,
-                ),
+                child: SlideTransition(position: _slideAnim, child: child),
               );
             },
-            child: isDark
+            child: tokens.isDark
                 ? _DarkAdLayout(onDismiss: _dismissAndNavigate)
                 : _LightAdLayout(onDismiss: _dismissAndNavigate),
           ),
@@ -113,13 +111,20 @@ class _LightAdLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
 
+    // The brand navy to blue fall, shared by the graphic accent and the pills.
+    final brand = tokens.gradientPrimary;
+
+    // The device mock is a dark object sitting on a light sheet, so it reads the
+    // dark token set rather than inventing its own greys.
+    const ink = AppTokens.dark;
+
     return Stack(
       children: [
         // Grid pattern background
         Positioned.fill(
           child: CustomPaint(
             painter: GridPatternPainter(
-              lineColor: const Color(0xFFE2E8F0).withValues(alpha: 0.6),
+              lineColor: tokens.border.withValues(alpha: 0.6),
               gridSize: 32,
             ),
           ),
@@ -133,20 +138,15 @@ class _LightAdLayout extends StatelessWidget {
             width: 280,
             height: 480,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(160),
-              gradient: const LinearGradient(
+              borderRadius: AppRadius.all(AppRadius.pill),
+              gradient: LinearGradient(
                 begin: Alignment.topRight,
                 end: Alignment.bottomLeft,
-                colors: [
-                  Color(0xFF0F172A),
-                  Color(0xFF1E1B4B),
-                  Palette.primaryPurple,
-                  Palette.primaryBlue,
-                ],
+                colors: [brand.first, tokens.interactivePrimary, brand.last],
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF1E1B4B).withValues(alpha: 0.3),
+                  color: tokens.interactivePrimary.withValues(alpha: 0.3),
                   blurRadius: 32,
                   offset: const Offset(-8, 12),
                 ),
@@ -172,32 +172,31 @@ class _LightAdLayout extends StatelessWidget {
                   Text(
                     'FrostBank',
                     style: AppType.titleLarge.copyWith(
-                      fontWeight: FontWeight.bold,
                       color: tokens.textPrimary,
-                      letterSpacing: -0.5,
                     ),
                   ),
                   const Spacer(),
                   // Skip button
                   Pressable(
                     onTap: onDismiss,
+                    semanticLabel: 'Skip advertisement',
+                    borderRadius: AppRadius.pill,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: Space.x4,
                         vertical: Space.x2,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.85),
+                        color: tokens.surfaceRaised,
                         borderRadius: AppRadius.all(AppRadius.pill),
                         border: Border.all(
-                          color: Palette.border.withValues(alpha: 0.6),
+                          color: tokens.border.withValues(alpha: 0.6),
                         ),
                       ),
                       child: Text(
                         'Skip',
                         style: AppType.labelLarge.copyWith(
                           color: tokens.textPrimary,
-                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -225,9 +224,7 @@ class _LightAdLayout extends StatelessWidget {
                               Text(
                                 'The ',
                                 style: AppType.displayLarge.copyWith(
-                                  color: Palette.textPrimary,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.1,
+                                  color: tokens.textPrimary,
                                 ),
                               ),
                               Container(
@@ -237,16 +234,18 @@ class _LightAdLayout extends StatelessWidget {
                                 ),
                                 decoration: BoxDecoration(
                                   borderRadius: AppRadius.all(AppRadius.xl),
-                                  gradient: const LinearGradient(
+                                  gradient: LinearGradient(
                                     colors: [
-                                      Color(0xFF2B1E6B),
-                                      Color(0xFF1565E0),
-                                      Color(0xFF6A5CFF),
+                                      tokens.interactivePrimary,
+                                      brand.last,
+                                      tokens.accent,
                                     ],
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Palette.vibrantBlue.withValues(alpha: 0.4),
+                                      color: tokens.accent.withValues(
+                                        alpha: 0.4,
+                                      ),
                                       blurRadius: 16,
                                       offset: const Offset(0, 4),
                                     ),
@@ -255,8 +254,7 @@ class _LightAdLayout extends StatelessWidget {
                                 child: Text(
                                   'Future',
                                   style: AppType.displayMedium.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
+                                    color: tokens.textOnBrand,
                                   ),
                                 ),
                               ),
@@ -266,17 +264,13 @@ class _LightAdLayout extends StatelessWidget {
                           Text(
                             'of Banking',
                             style: AppType.displayLarge.copyWith(
-                              color: Palette.textPrimary,
-                              fontWeight: FontWeight.bold,
-                              height: 1.1,
+                              color: tokens.textPrimary,
                             ),
                           ),
                           Text(
                             'is Digital.',
                             style: AppType.displayLarge.copyWith(
-                              color: Palette.textPrimary,
-                              fontWeight: FontWeight.bold,
-                              height: 1.1,
+                              color: tokens.textPrimary,
                             ),
                           ),
 
@@ -287,7 +281,6 @@ class _LightAdLayout extends StatelessWidget {
                             'Banking is no longer just transactions. It is speed, security, and smart financial control.',
                             style: AppType.bodyLarge.copyWith(
                               color: tokens.textSecondary,
-                              height: 1.4,
                             ),
                           ),
 
@@ -304,11 +297,11 @@ class _LightAdLayout extends StatelessWidget {
                                   vertical: Space.x3,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF3B82F6),
+                                  color: tokens.info,
                                   borderRadius: AppRadius.all(AppRadius.pill),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: const Color(0xFF3B82F6).withValues(alpha: 0.3),
+                                      color: tokens.info.withValues(alpha: 0.3),
                                       blurRadius: 10,
                                       offset: const Offset(0, 4),
                                     ),
@@ -317,8 +310,7 @@ class _LightAdLayout extends StatelessWidget {
                                 child: Text(
                                   'Experience Smarter',
                                   style: AppType.titleMedium.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
+                                    color: tokens.textOnBrand,
                                   ),
                                 ),
                               ),
@@ -328,11 +320,12 @@ class _LightAdLayout extends StatelessWidget {
                                   vertical: Space.x3,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF1E1B4B),
+                                  color: tokens.interactivePrimary,
                                   borderRadius: AppRadius.all(AppRadius.pill),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: const Color(0xFF1E1B4B).withValues(alpha: 0.3),
+                                      color: tokens.interactivePrimary
+                                          .withValues(alpha: 0.3),
                                       blurRadius: 10,
                                       offset: const Offset(0, 4),
                                     ),
@@ -341,14 +334,14 @@ class _LightAdLayout extends StatelessWidget {
                                 child: Text(
                                   'Banking Today!',
                                   style: AppType.titleMedium.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
+                                    color: tokens.textOnBrand,
                                   ),
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 100),
+                          // Clears the device mock anchored to the bottom right.
+                          const SizedBox(height: Space.x16 + Space.x10),
                         ],
                       ),
                     ),
@@ -361,18 +354,15 @@ class _LightAdLayout extends StatelessWidget {
                         width: 200,
                         height: 340,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF111827),
+                          color: ink.background,
                           borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(36),
-                            topRight: Radius.circular(36),
+                            topLeft: Radius.circular(AppRadius.xl),
+                            topRight: Radius.circular(AppRadius.xl),
                           ),
-                          border: Border.all(
-                            color: const Color(0xFF374151),
-                            width: 6,
-                          ),
+                          border: Border.all(color: ink.border, width: 6),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.25),
+                              color: tokens.shadow.withValues(alpha: 0.25),
                               blurRadius: 28,
                               offset: const Offset(-8, 16),
                             ),
@@ -386,8 +376,8 @@ class _LightAdLayout extends StatelessWidget {
                               width: 60,
                               height: 6,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF374151),
-                                borderRadius: BorderRadius.circular(4),
+                                color: ink.border,
+                                borderRadius: AppRadius.all(AppRadius.xs),
                               ),
                             ),
                             const Spacer(),
@@ -396,7 +386,7 @@ class _LightAdLayout extends StatelessWidget {
                             Text(
                               'FrostBank',
                               style: AppType.labelMedium.copyWith(
-                                color: Colors.white.withValues(alpha: 0.7),
+                                color: ink.textSecondary,
                               ),
                             ),
                             const Spacer(),
@@ -414,21 +404,19 @@ class _LightAdLayout extends StatelessWidget {
               padding: const EdgeInsets.all(Space.x6),
               child: Pressable(
                 onTap: onDismiss,
+                borderRadius: AppRadius.pill,
                 child: Container(
                   width: double.infinity,
-                  height: 54,
+                  height: Layout.minTapTarget + Space.x2,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     borderRadius: AppRadius.all(AppRadius.pill),
-                    gradient: const LinearGradient(
-                      colors: [
-                        Palette.primaryPurple,
-                        Palette.vibrantBlue,
-                      ],
+                    gradient: LinearGradient(
+                      colors: [tokens.interactivePrimary, tokens.accent],
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Palette.vibrantBlue.withValues(alpha: 0.35),
+                        color: tokens.accent.withValues(alpha: 0.35),
                         blurRadius: 16,
                         offset: const Offset(0, 6),
                       ),
@@ -440,14 +428,13 @@ class _LightAdLayout extends StatelessWidget {
                       Text(
                         'Get Started',
                         style: AppType.titleMedium.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
+                          color: tokens.textOnBrand,
                         ),
                       ),
                       const SizedBox(width: Space.x2),
-                      const Icon(
+                      Icon(
                         Icons.arrow_forward_rounded,
-                        color: Colors.white,
+                        color: tokens.textOnBrand,
                         size: 20,
                       ),
                     ],
@@ -470,20 +457,22 @@ class _DarkAdLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
     return Stack(
       children: [
         // Ambient Dark Background with gradient glow
         Positioned.fill(
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Palette.darkBackground,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: tokens.background,
               gradient: RadialGradient(
-                center: Alignment(0.4, -0.2),
+                center: const Alignment(0.4, -0.2),
                 radius: 1.2,
                 colors: [
-                  Color(0xFF1E1B4B),
-                  Color(0xFF0F172A),
-                  Palette.darkBackground,
+                  tokens.surfaceRaised,
+                  tokens.backgroundAlt,
+                  tokens.background,
                 ],
               ),
             ),
@@ -505,23 +494,22 @@ class _DarkAdLayout extends StatelessWidget {
                   // Skip button on top left
                   Pressable(
                     onTap: onDismiss,
+                    semanticLabel: 'Skip advertisement',
+                    borderRadius: AppRadius.pill,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: Space.x4,
                         vertical: Space.x2,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.1),
+                        color: tokens.surfaceRaised,
                         borderRadius: AppRadius.all(AppRadius.pill),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.15),
-                        ),
+                        border: Border.all(color: tokens.border),
                       ),
                       child: Text(
                         'Skip',
                         style: AppType.labelLarge.copyWith(
-                          color: Palette.darkTextPrimary,
-                          fontWeight: FontWeight.w600,
+                          color: tokens.textPrimary,
                         ),
                       ),
                     ),
@@ -530,9 +518,7 @@ class _DarkAdLayout extends StatelessWidget {
                   Text(
                     'FrostBank',
                     style: AppType.titleLarge.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Palette.darkTextPrimary,
-                      letterSpacing: -0.5,
+                      color: tokens.textPrimary,
                     ),
                   ),
                   const SizedBox(width: Space.x2),
@@ -556,9 +542,7 @@ class _DarkAdLayout extends StatelessWidget {
                           Text(
                             'Pay Your Way,\nAnytime',
                             style: AppType.displayLarge.copyWith(
-                              color: const Color(0xFF60A5FA),
-                              fontWeight: FontWeight.bold,
-                              height: 1.1,
+                              color: tokens.info,
                             ),
                           ),
 
@@ -567,8 +551,7 @@ class _DarkAdLayout extends StatelessWidget {
                           Text(
                             'Send, receive, and manage\nmoney effortlessly',
                             style: AppType.bodyLarge.copyWith(
-                              color: Palette.darkTextSecondary,
-                              height: 1.3,
+                              color: tokens.textSecondary,
                             ),
                           ),
 
@@ -577,17 +560,20 @@ class _DarkAdLayout extends StatelessWidget {
                           // Primary CTA Button
                           Pressable(
                             onTap: onDismiss,
+                            borderRadius: AppRadius.sm,
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: Space.x8,
                                 vertical: Space.x4,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF3B82F6),
+                                color: tokens.interactivePrimary,
                                 borderRadius: AppRadius.all(AppRadius.sm),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: const Color(0xFF3B82F6).withValues(alpha: 0.4),
+                                    color: tokens.interactivePrimary.withValues(
+                                      alpha: 0.4,
+                                    ),
                                     blurRadius: 16,
                                     offset: const Offset(0, 6),
                                   ),
@@ -596,8 +582,7 @@ class _DarkAdLayout extends StatelessWidget {
                               child: Text(
                                 'Get Started Now',
                                 style: AppType.titleMedium.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
+                                  color: tokens.textOnBrand,
                                 ),
                               ),
                             ),
@@ -623,13 +608,15 @@ class _DarkAdLayout extends StatelessWidget {
                                 Icon(
                                   Icons.monetization_on_outlined,
                                   size: 32,
-                                  color: const Color(0xFF93C5FD).withValues(alpha: 0.9),
+                                  color: tokens.info.withValues(alpha: 0.9),
                                 ),
-                                const SizedBox(height: 2),
+                                const SizedBox(height: Space.x1),
                                 Icon(
                                   Icons.currency_exchange_rounded,
                                   size: 24,
-                                  color: const Color(0xFFBFD6FF).withValues(alpha: 0.8),
+                                  color: tokens.interactiveActive.withValues(
+                                    alpha: 0.8,
+                                  ),
                                 ),
                               ],
                             ),
@@ -645,16 +632,14 @@ class _DarkAdLayout extends StatelessWidget {
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
                                 colors: [
-                                  const Color(0xFF1E293B).withValues(alpha: 0.8),
-                                  const Color(0xFF0F172A),
+                                  tokens.surface.withValues(alpha: 0.8),
+                                  tokens.backgroundAlt,
                                 ],
                               ),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.1),
-                              ),
+                              border: Border.all(color: tokens.border),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.4),
+                                  color: tokens.shadow.withValues(alpha: 0.4),
                                   blurRadius: 24,
                                   offset: const Offset(0, 12),
                                 ),
@@ -666,14 +651,15 @@ class _DarkAdLayout extends StatelessWidget {
                                 Icon(
                                   Icons.smartphone_rounded,
                                   size: 60,
-                                  color: Palette.skyBlue.withValues(alpha: 0.9),
+                                  color: tokens.interactiveActive.withValues(
+                                    alpha: 0.9,
+                                  ),
                                 ),
                                 const SizedBox(height: Space.x2),
                                 Text(
                                   'Instant & Secure',
                                   style: AppType.titleMedium.copyWith(
-                                    color: Palette.darkTextPrimary,
-                                    fontWeight: FontWeight.w600,
+                                    color: tokens.textPrimary,
                                   ),
                                 ),
                               ],
@@ -689,62 +675,58 @@ class _DarkAdLayout extends StatelessWidget {
             ),
 
             // Bottom Trust Badges
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: Space.x4,
-                vertical: Space.x4,
-              ),
+            DecoratedBox(
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.3),
-                border: Border(
-                  top: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.08),
-                  ),
-                ),
+                color: tokens.background.withValues(alpha: 0.3),
+                border: Border(top: BorderSide(color: tokens.border)),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const FrostMark(size: 18),
-                          const SizedBox(width: Space.x1),
-                          Text(
-                            'Instant Transfers',
-                            style: AppType.labelMedium.copyWith(
-                              color: Palette.darkTextPrimary,
-                              fontWeight: FontWeight.w600,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Space.x4,
+                  vertical: Space.x4,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const FrostMark(size: 18),
+                            const SizedBox(width: Space.x1),
+                            Text(
+                              'Instant Transfers',
+                              style: AppType.labelMedium.copyWith(
+                                color: tokens.textPrimary,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: Space.x2),
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const FrostMark(size: 18),
-                          const SizedBox(width: Space.x1),
-                          Text(
-                            '100% Secure Payments',
-                            style: AppType.labelMedium.copyWith(
-                              color: Palette.darkTextPrimary,
-                              fontWeight: FontWeight.w600,
+                    const SizedBox(width: Space.x2),
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const FrostMark(size: 18),
+                            const SizedBox(width: Space.x1),
+                            Text(
+                              '100% Secure Payments',
+                              style: AppType.labelMedium.copyWith(
+                                color: tokens.textPrimary,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],

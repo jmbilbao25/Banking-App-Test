@@ -42,7 +42,9 @@ Future<void> showOpeningAdModal(
   await showDialog<void>(
     context: context,
     barrierDismissible: true,
-    barrierColor: Colors.black.withValues(alpha: 0.7),
+    // The scrim is the same ink the token set uses for elevation, so the dialog
+    // sits on the brand navy rather than on pure black.
+    barrierColor: AppTokens.dark.backgroundAlt.withValues(alpha: 0.7),
     builder: (dialogContext) => OpeningAdModal(
       assetPath: selectedAssetPath,
       onDismiss: () {
@@ -57,11 +59,7 @@ Future<void> showOpeningAdModal(
 
 /// Rotating Opening Advertisement modal dialog with theme matching and rare ad support.
 class OpeningAdModal extends StatelessWidget {
-  const OpeningAdModal({
-    required this.onDismiss,
-    this.assetPath,
-    super.key,
-  });
+  const OpeningAdModal({required this.onDismiss, this.assetPath, super.key});
 
   final VoidCallback onDismiss;
   final String? assetPath;
@@ -72,7 +70,13 @@ class OpeningAdModal extends StatelessWidget {
     final activeAsset = assetPath ?? selectRandomAdAsset();
 
     // Determine card theme based on the selected ad content rather than system mode alone.
-    final isDarkCard = activeAsset.contains('ad_dark') || activeAsset.contains('ad_uma');
+    final isDarkCard =
+        activeAsset.contains('ad_dark') || activeAsset.contains('ad_uma');
+
+    // The frame around a dark poster stays dark in either theme, so the chrome
+    // reads as part of the artwork. One branch here resolves every colour on the
+    // card, instead of a light and a dark literal at each call site.
+    final card = isDarkCard ? AppTokens.dark : tokens;
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -83,20 +87,14 @@ class OpeningAdModal extends StatelessWidget {
       ),
       child: Center(
         child: Container(
-          constraints: const BoxConstraints(
-            maxWidth: 420,
-            maxHeight: 620,
-          ),
+          constraints: const BoxConstraints(maxWidth: 420, maxHeight: 620),
           decoration: BoxDecoration(
-            color: isDarkCard ? Palette.darkBackground : tokens.background,
+            color: card.background,
             borderRadius: AppRadius.all(AppRadius.xl),
-            border: Border.all(
-              color: isDarkCard ? Palette.darkBorder : Palette.border.withValues(alpha: 0.6),
-              width: 1,
-            ),
+            border: Border.all(color: card.border, width: 1),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: isDarkCard ? 0.65 : 0.2),
+                color: card.shadow,
                 blurRadius: 36,
                 offset: const Offset(0, 16),
               ),
@@ -109,7 +107,12 @@ class OpeningAdModal extends StatelessWidget {
               children: [
                 // Header Bar
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(Space.x5, Space.x4, Space.x4, Space.x3),
+                  padding: const EdgeInsets.fromLTRB(
+                    Space.x5,
+                    Space.x4,
+                    Space.x4,
+                    Space.x3,
+                  ),
                   child: Row(
                     children: [
                       const FrostMark(size: 26),
@@ -117,9 +120,7 @@ class OpeningAdModal extends StatelessWidget {
                       Text(
                         'FrostBank',
                         style: AppType.titleMedium.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: isDarkCard ? Palette.darkTextPrimary : tokens.textPrimary,
-                          letterSpacing: -0.3,
+                          color: card.textPrimary,
                         ),
                       ),
                       const Spacer(),
@@ -127,21 +128,16 @@ class OpeningAdModal extends StatelessWidget {
                       Pressable(
                         onTap: onDismiss,
                         semanticLabel: 'Skip advertisement',
+                        borderRadius: AppRadius.pill,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: Space.x3,
                             vertical: Space.x1,
                           ),
                           decoration: BoxDecoration(
-                            color: isDarkCard
-                                ? Colors.white.withValues(alpha: 0.12)
-                                : Palette.surface,
+                            color: card.surface,
                             borderRadius: AppRadius.all(AppRadius.pill),
-                            border: Border.all(
-                              color: isDarkCard
-                                  ? Colors.white.withValues(alpha: 0.15)
-                                  : Palette.border.withValues(alpha: 0.5),
-                            ),
+                            border: Border.all(color: card.border),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -149,15 +145,14 @@ class OpeningAdModal extends StatelessWidget {
                               Text(
                                 'Skip',
                                 style: AppType.labelMedium.copyWith(
-                                  color: isDarkCard ? Palette.darkTextPrimary : tokens.textPrimary,
-                                  fontWeight: FontWeight.w600,
+                                  color: card.textPrimary,
                                 ),
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: Space.x1),
                               Icon(
                                 Icons.close_rounded,
                                 size: 16,
-                                color: isDarkCard ? Palette.darkTextSecondary : tokens.textSecondary,
+                                color: card.textSecondary,
                               ),
                             ],
                           ),
@@ -180,8 +175,8 @@ class OpeningAdModal extends StatelessWidget {
                         height: double.infinity,
                         errorBuilder: (context, error, stackTrace) {
                           return isDarkCard
-                              ? _DarkAdFallback(onDismiss: onDismiss)
-                              : _LightAdFallback(onDismiss: onDismiss);
+                              ? _DarkAdFallback(tokens: card)
+                              : _LightAdFallback(tokens: card);
                         },
                       ),
                     ),
@@ -193,22 +188,21 @@ class OpeningAdModal extends StatelessWidget {
                   padding: const EdgeInsets.all(Space.x4),
                   child: Pressable(
                     onTap: onDismiss,
+                    borderRadius: AppRadius.pill,
                     child: Container(
                       width: double.infinity,
-                      height: 52,
+                      height: Layout.minTapTarget + Space.x1,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         borderRadius: AppRadius.all(AppRadius.pill),
                         gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: isDarkCard
-                              ? const [Color(0xFF2563EB), Color(0xFF1D4ED8)]
-                              : const [Palette.primaryPurple, Palette.vibrantBlue],
+                          colors: card.gradientPrimary,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Palette.vibrantBlue.withValues(alpha: 0.35),
+                            color: card.accent.withValues(alpha: 0.35),
                             blurRadius: 16,
                             offset: const Offset(0, 6),
                           ),
@@ -221,19 +215,19 @@ class OpeningAdModal extends StatelessWidget {
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(
-                                isDarkCard ? 'Get Started Now' : 'Experience Smarter Banking',
+                                isDarkCard
+                                    ? 'Get Started Now'
+                                    : 'Experience Smarter Banking',
                                 style: AppType.titleMedium.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: -0.2,
+                                  color: card.textOnBrand,
                                 ),
                               ),
                             ),
                           ),
                           const SizedBox(width: Space.x2),
-                          const Icon(
+                          Icon(
                             Icons.arrow_forward_rounded,
-                            color: Colors.white,
+                            color: card.textOnBrand,
                             size: 18,
                           ),
                         ],
@@ -252,64 +246,64 @@ class OpeningAdModal extends StatelessWidget {
 
 /// Fallback Light Mode layout if image asset is missing.
 class _LightAdFallback extends StatelessWidget {
-  const _LightAdFallback({required this.onDismiss});
+  const _LightAdFallback({required this.tokens});
 
-  final VoidCallback onDismiss;
+  /// Resolved from the card rather than from the platform theme, so the fallback
+  /// matches the frame it is drawn inside.
+  final AppTokens tokens;
 
   @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    return Container(
-      color: Palette.background,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: CustomPaint(
-              painter: GridPatternPainter(
-                lineColor: const Color(0xFFE2E8F0).withValues(alpha: 0.6),
-                gridSize: 28,
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(color: tokens.background),
+    child: Stack(
+      children: [
+        Positioned.fill(
+          child: CustomPaint(
+            painter: GridPatternPainter(
+              lineColor: tokens.border.withValues(alpha: 0.6),
+              gridSize: 28,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(Space.x5),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'The Future of Banking is Digital.',
+                style: AppType.displayMedium.copyWith(
+                  color: tokens.textPrimary,
+                ),
               ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(Space.x5),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'The Future of Banking is Digital.',
-                  style: AppType.displayMedium.copyWith(
-                    color: Palette.textPrimary,
-                    fontWeight: FontWeight.bold,
-                  ),
+              const SizedBox(height: Space.x3),
+              Text(
+                'Banking is no longer just transactions. It is speed, security, and smart financial control.',
+                style: AppType.bodyMedium.copyWith(
+                  color: tokens.textSecondary,
                 ),
-                const SizedBox(height: Space.x3),
-                Text(
-                  'Banking is no longer just transactions. It is speed, security, and smart financial control.',
-                  style: AppType.bodyMedium.copyWith(
-                    color: tokens.textSecondary,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
 }
 
 /// Fallback Dark Mode layout if image asset is missing.
 class _DarkAdFallback extends StatelessWidget {
-  const _DarkAdFallback({required this.onDismiss});
+  const _DarkAdFallback({required this.tokens});
 
-  final VoidCallback onDismiss;
+  /// Resolved from the card rather than from the platform theme, so the fallback
+  /// matches the frame it is drawn inside.
+  final AppTokens tokens;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Palette.darkBackground,
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(color: tokens.background),
+    child: Padding(
       padding: const EdgeInsets.all(Space.x5),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -317,20 +311,15 @@ class _DarkAdFallback extends StatelessWidget {
         children: [
           Text(
             'Pay Your Way,\nAnytime',
-            style: AppType.displayMedium.copyWith(
-              color: const Color(0xFF60A5FA),
-              fontWeight: FontWeight.bold,
-            ),
+            style: AppType.displayMedium.copyWith(color: tokens.info),
           ),
           const SizedBox(height: Space.x3),
           Text(
             'Send, receive, and manage money effortlessly',
-            style: AppType.bodyMedium.copyWith(
-              color: Palette.darkTextSecondary,
-            ),
+            style: AppType.bodyMedium.copyWith(color: tokens.textSecondary),
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
 }
