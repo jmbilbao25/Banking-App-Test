@@ -5,6 +5,7 @@ import '../../core/design/tokens.dart';
 import '../../core/format/money.dart';
 import '../../domain/models.dart';
 import '../../state/providers.dart';
+import '../widgets/app_lock_confirm.dart';
 import '../widgets/money_text.dart';
 
 class TransferScreen extends ConsumerStatefulWidget {
@@ -67,6 +68,17 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       fromCurrency: currencyCode,
       toCurrency: 'USD',
     );
+
+    // Requirement 16.9: App_Lock confirms the customer before Repository_Layer
+    // performs the transfer. Nothing has moved at this point, so a refusal
+    // simply returns to the form.
+    final confirmed = await confirmWithAppLock(
+      context,
+      ref,
+      reason:
+          'Confirm sending $symbol${amount.toStringAsFixed(2)} to $recipient.',
+    );
+    if (!mounted || !confirmed) return;
 
     setState(() {
       _submitting = true;

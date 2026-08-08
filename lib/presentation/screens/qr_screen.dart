@@ -3,8 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../../core/format/money.dart';
 import '../../domain/models.dart';
 import '../../state/providers.dart';
+import '../widgets/app_lock_confirm.dart';
+import '../widgets/camera_permission.dart';
 
 class QRScreen extends ConsumerStatefulWidget {
   const QRScreen({super.key});
@@ -20,6 +23,10 @@ class _QRScreenState extends ConsumerState<QRScreen> with SingleTickerProviderSt
   
   String _generatedQRText = '';
   bool _isProcessingQR = false;
+
+  /// Requirement 17.5: the viewport is replaced by an explanation and a control
+  /// that opens the operating system settings when permission is refused.
+  bool _permissionDenied = false;
 
   @override
   void initState() {
@@ -185,9 +192,23 @@ class _QRScreenState extends ConsumerState<QRScreen> with SingleTickerProviderSt
 
   Future<void> _executeQRPayment(Account sourceAccount) async {
     const double qrAmount = 100.0;
-    
+
     if (sourceAccount.availableBalance < qrAmount) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Insufficient funds for \$100.00 deduction.')));
+      setState(() => _isProcessingQR = false);
+      _scannerController.start();
+      return;
+    }
+
+    // Requirement 17.7: App_Lock confirms the customer before the balance is
+    // reduced. A refusal leaves the account untouched and resumes scanning.
+    final confirmed = await confirmWithAppLock(
+      context,
+      ref,
+      reason: 'Confirm paying ${Money.format(qrAmount)} to this merchant.',
+    );
+    if (!mounted) return;
+    if (!confirmed) {
       setState(() => _isProcessingQR = false);
       _scannerController.start();
       return;
@@ -321,18 +342,40 @@ class _QRScreenState extends ConsumerState<QRScreen> with SingleTickerProviderSt
                       border: Border.all(color: isDark ? const Color(0xFF4A4A7A) : const Color(0xFF003366), width: 4),
                       borderRadius: BorderRadius.circular(24),
                     ),
-                    child: MobileScanner(
-                      controller: _scannerController,
-                      onDetect: (capture) {
-                        final barcodes = capture.barcodes;
-                        for (final barcode in barcodes) {
-                          if (barcode.rawValue != null) {
-                            _onQRScanned(barcode.rawValue!);
-                            break;
-                          }
-                        }
-                      },
-                    ),
+                    child: _permissionDenied
+                        // Requirement 17.5.
+                        ? CameraPermissionDeniedView(
+                            onRetry: () =>
+                                setState(() => _permissionDenied = false),
+                          )
+                        : MobileScanner(
+                            controller: _scannerController,
+                            errorBuilder: (context, error) {
+                              if (error.errorCode ==
+                                  MobileScannerErrorCode.permissionDenied) {
+                                WidgetsBinding.instance.addPostFrameCallback((
+                                  _,
+                                ) {
+                                  if (mounted) {
+                                    setState(() => _permissionDenied = true);
+                                  }
+                                });
+                              }
+                              return CameraPermissionDeniedView(
+                                onRetry: () =>
+                                    setState(() => _permissionDenied = false),
+                              );
+                            },
+                            onDetect: (capture) {
+                              final barcodes = capture.barcodes;
+                              for (final barcode in barcodes) {
+                                if (barcode.rawValue != null) {
+                                  _onQRScanned(barcode.rawValue!);
+                                  break;
+                                }
+                              }
+                            },
+                          ),
                   ),
                 ),
                 const SizedBox(height: 24),

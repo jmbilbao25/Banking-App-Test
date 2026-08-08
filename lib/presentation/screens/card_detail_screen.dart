@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,7 @@ import '../../core/design/tokens.dart';
 import '../../core/design/typography.dart';
 import '../../domain/models.dart';
 import '../../state/providers.dart';
+import '../widgets/app_lock_confirm.dart';
 import '../widgets/card_carousel.dart';
 import '../widgets/card_face.dart';
 import '../widgets/money_text.dart';
@@ -31,6 +34,30 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
   int? _index;
   bool _revealed = false;
 
+  /// Requirement 13.8 holds the full number on screen for 10 seconds and then
+  /// returns to the masked rendering, so a revealed card cannot be left visible.
+  static const _revealWindow = Duration(seconds: 10);
+  Timer? _remaskTimer;
+
+  @override
+  void dispose() {
+    _remaskTimer?.cancel();
+    super.dispose();
+  }
+
+  void _reveal() {
+    _remaskTimer?.cancel();
+    setState(() => _revealed = true);
+    _remaskTimer = Timer(_revealWindow, () {
+      if (mounted) setState(() => _revealed = false);
+    });
+  }
+
+  void _mask() {
+    _remaskTimer?.cancel();
+    setState(() => _revealed = false);
+  }
+
   Future<void> _copy(BankCard card) async {
     await Clipboard.setData(
       ClipboardData(text: card.number.replaceAll(' ', '')),
@@ -44,93 +71,6 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
     );
   }
 
-  Future<bool> _promptPinVerification(
-    BuildContext context, {
-    required String title,
-    required String message,
-  }) async {
-    final controller = TextEditingController(text: '');
-    final tokens = context.tokens;
-    final verified = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: tokens.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
-        title: Row(
-          children: [
-            Icon(Icons.lock_rounded, color: tokens.accent, size: 20),
-            const SizedBox(width: Space.x2),
-            Expanded(
-              child: Text(
-                title,
-                style: AppType.titleMedium.copyWith(color: tokens.textPrimary),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              message,
-              style: AppType.bodySmall.copyWith(color: tokens.textSecondary),
-            ),
-            const SizedBox(height: Space.x4),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              obscureText: true,
-              maxLength: 6,
-              autofocus: true,
-              textAlign: TextAlign.center,
-              style: AppType.numericHero.copyWith(
-                fontSize: 24,
-                letterSpacing: 8,
-              ),
-              decoration: InputDecoration(
-                hintText: '••••••',
-                counterText: '',
-                filled: true,
-                fillColor: tokens.interactiveSecondary,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                  borderSide: BorderSide(color: tokens.border),
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: tokens.textSecondary),
-            ),
-          ),
-          FilledButton(
-            onPressed: () {
-              // Checked against the stored digest. The previous literal
-              // comparison accepted a known PIN on every card in the build.
-              if (ref.read(pinVaultProvider).verify(controller.text.trim())) {
-                Navigator.of(ctx).pop(true);
-              } else {
-                HapticFeedback.vibrate();
-              }
-            },
-            style: FilledButton.styleFrom(backgroundColor: tokens.accent),
-            child: const Text('Verify PIN'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    return verified ?? false;
-  }
-
   @override
   Widget build(BuildContext context) {
     final cards = ref.watch(cardsProvider);
@@ -142,16 +82,14 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
           IconButton(
             onPressed: () async {
               if (_revealed) {
-                setState(() => _revealed = false);
+                _mask();
               } else {
-                final ok = await _promptPinVerification(
+                final ok = await confirmWithAppLock(
                   context,
-                  title: 'Security Verification',
-                  message: 'Enter your 6-digit PIN to reveal full card details.',
+                  ref,
+                  reason: 'Confirm to reveal your full card number.',
                 );
-                if (ok && mounted) {
-                  setState(() => _revealed = true);
-                }
+                if (ok && mounted) _reveal();
               }
             },
             tooltip: _revealed ? 'Hide card details' : 'Reveal card details (PIN required)',
@@ -200,12 +138,16 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
                   child: CardCarousel(
                     cards: rows,
                     initialIndex: initial,
-                    onPageChanged: (value) => setState(() {
-                      _index = value;
+                    onPageChanged: (value) {
                       // A new card in front never inherits the previous card's
-                      // revealed digits.
-                      _revealed = false;
-                    }),
+                      // revealed digits, and the remask timer is cancelled so it
+                      // cannot fire against the wrong card.
+                      _remaskTimer?.cancel();
+                      setState(() {
+                        _index = value;
+                        _revealed = false;
+                      });
+                    },
                   ),
                 ),
                 const SizedBox(height: Space.x6),
@@ -302,11 +244,11 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
                           ),
                           trailing: Pressable(
                             onTap: () async {
-                              final okPin = await _promptPinVerification(
+                              final okPin = await confirmWithAppLock(
                                 context,
-                                title: 'Security PIN Required',
-                                message:
-                                    'Enter your 6-digit PIN to confirm card state update.',
+                                ref,
+                                reason:
+                                    'Confirm changing the state of this card.',
                               );
                               if (!okPin || !context.mounted) return;
 

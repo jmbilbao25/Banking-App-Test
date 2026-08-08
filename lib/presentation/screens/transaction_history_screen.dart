@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/design/tokens.dart';
 import '../../core/design/typography.dart';
@@ -143,11 +146,17 @@ final txnPagingProvider =
       retry: noAutomaticRetry,
     );
 
-/// The seam requirement 15.11 writes through. The default reports where the
-/// file would land and performs no IO, so no build and no test depends on a
-/// platform path. Bind the device backed writer over this at composition time.
+/// The seam requirement 15.11 writes through, bound to application storage.
+///
+/// Tests override this with a spy, so no test touches a filesystem. A throw
+/// becomes the failure message the screen displays.
 final txnExportWriterProvider = Provider<TxnExportWriter>(
-  (ref) => stubTxnExportWriter,
+  (ref) => (filename, contents) async {
+    final directory = await getApplicationDocumentsDirectory();
+    final file = File('${directory.path}/$filename');
+    await file.writeAsString(contents);
+    return file.path;
+  },
 );
 
 /// Full ledger with search, filters, removable filter chips, paging, and export.
