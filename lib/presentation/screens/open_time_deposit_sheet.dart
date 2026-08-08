@@ -6,8 +6,8 @@ import '../../core/design/tokens.dart';
 import '../../core/design/typography.dart';
 import '../../core/format/dates.dart';
 import '../../core/format/money.dart';
-import '../../data/mock_time_deposit_repository.dart';
 import '../../domain/time_deposit_model.dart';
+import '../../state/providers.dart';
 import '../widgets/money_text.dart';
 import '../widgets/pressable.dart';
 

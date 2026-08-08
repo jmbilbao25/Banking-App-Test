@@ -97,6 +97,14 @@ abstract interface class NotificationRepository {
   /// Newest first.
   Future<List<AppNotification>> fetchNotifications();
 
+  /// Creates a notification record.
+  ///
+  /// Synchronous and immediate, because the callers are events rather than user
+  /// actions: a time deposit reaching maturity (requirement 21.9) and a split
+  /// bill reminder (requirement 20.8). Adding the same identifier twice is a no
+  /// op, so a settlement that runs again cannot duplicate the record.
+  void add(AppNotification notification);
+
   /// Marks one notification as read. An already read identifier is a no op, and
   /// an unknown identifier is ignored rather than raised.
   Future<void> markRead(String id);

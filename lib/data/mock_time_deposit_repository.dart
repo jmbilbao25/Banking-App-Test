@@ -1,15 +1,12 @@
-/// In memory [TimeDepositRepository] plus the Riverpod providers the Time
-/// Deposit screen reads.
+/// In memory [TimeDepositRepository].
 ///
-/// The providers live here only because `state/providers.dart` is shared and
-/// owned elsewhere. They are meant to be lifted into that file during
-/// integration, unchanged.
+/// The Riverpod providers for this feature live in `lib/state/providers.dart`,
+/// beside the other repository providers, which is also where the account debit,
+/// the account credit, the transaction record and the maturity notification are
+/// bound to the shared mock data source.
 library;
 
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import '../domain/time_deposit_model.dart';
-import '../state/providers.dart' show noAutomaticRetry;
 
 /// Holds every deposit in memory and performs the account and ledger writes
 /// through the callbacks it was given.
@@ -256,32 +253,6 @@ class MockTimeDepositRepository implements TimeDepositRepository {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Providers
-// ---------------------------------------------------------------------------
-//
-// INTEGRATION: move these four declarations into `lib/state/providers.dart`
-// verbatim and delete them from here. Bind the three callbacks on
-// `timeDepositRepositoryProvider` to `MockDataSource` at that point.
-
-/// The repository the screen reads. Overridden wholesale in tests.
-final timeDepositRepositoryProvider = Provider<TimeDepositRepository>(
-  (ref) => MockTimeDepositRepository(now: DateTime.now()),
-);
-
-/// The clock the screen uses for days remaining, so a test can pin it.
-final timeDepositClockProvider = Provider<DateTime Function()>(
-  (ref) => DateTime.now,
-);
-
-/// Every deposit, newest first (Req 21.1).
-final timeDepositsProvider = FutureProvider<List<TimeDeposit>>(
-  (ref) => ref.watch(timeDepositRepositoryProvider).fetchTimeDeposits(),
-  retry: noAutomaticRetry,
-);
-
-/// Total principal placed across active deposits (Req 21.2).
-final timeDepositTotalPrincipalProvider = FutureProvider<double>(
-  (ref) => ref.watch(timeDepositRepositoryProvider).fetchTotalPrincipal(),
-  retry: noAutomaticRetry,
-);
+// The providers for this feature live in `lib/state/providers.dart`, beside the
+// other repository providers, where the account debit, the account credit, the
+// transaction record, and the maturity notification are bound.

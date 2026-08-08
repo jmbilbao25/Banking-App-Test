@@ -13,12 +13,16 @@ import 'app_lock_controller.dart';
 import '../data/mock_data_source.dart';
 import '../data/mock_snapshot.dart';
 import '../data/mock_market_repository.dart';
+import '../data/mock_notification_repository.dart';
 import '../data/mock_repositories.dart';
+import '../data/mock_time_deposit_repository.dart';
 import '../domain/models.dart';
 import '../data/mock_seed.dart';
 import '../data/twelve_data_market_repository.dart';
 import '../data/supabase_repositories.dart';
+import '../domain/notification_model.dart';
 import '../domain/repositories.dart';
+import '../domain/time_deposit_model.dart';
 import 'preferences_controller.dart';
 import 'session_controller.dart';
 import 'txn_filter.dart';
@@ -171,6 +175,111 @@ final httpClientProvider = Provider<http.Client>((ref) {
   ref.onDispose(client.close);
   return client;
 });
+
+// ---------------------------------------------------------------------------
+// Notifications (Req 22)
+// ---------------------------------------------------------------------------
+
+final notificationRepositoryProvider = Provider<NotificationRepository>(
+  (ref) => MockNotificationRepository(),
+);
+
+/// The feed, newest first.
+final notificationsProvider = FutureProvider<List<AppNotification>>(
+  (ref) => ref.read(notificationRepositoryProvider).fetchNotifications(),
+  retry: noAutomaticRetry,
+);
+
+/// Unread total, for the notifications header and for the dashboard badge of
+/// requirement 12.16. Resolves to zero while the feed is loading or failed, so a
+/// badge never renders a figure it cannot stand behind.
+final unreadNotificationCountProvider = Provider<int>((ref) {
+  final feed = ref.watch(notificationsProvider);
+  if (!feed.hasValue) return 0;
+  return feed.requireValue.where((row) => !row.read).length;
+});
+
+// ---------------------------------------------------------------------------
+// Time deposits (Req 21)
+// ---------------------------------------------------------------------------
+
+/// The clock the time deposit surface uses, so a test can pin it.
+final timeDepositClockProvider = Provider<DateTime Function()>(
+  (ref) => DateTime.now,
+);
+
+/// Time deposits, with the three side effects requirement 21.5 and 21.9 need
+/// bound to the shared mock data source. The repository itself imports no data
+/// source, so this provider is the only seam.
+final timeDepositRepositoryProvider = Provider<TimeDepositRepository>((ref) {
+  final source = ref.watch(mockDataSourceProvider);
+  final notifications = ref.watch(notificationRepositoryProvider);
+
+  final repository = MockTimeDepositRepository(
+    now: ref.watch(timeDepositClockProvider)(),
+    debitAccount: (accountId, amount) async =>
+        source.deductAccountBalance(accountId, amount),
+    // deductAccountBalance clamps at zero and has no credit twin, so a negated
+    // amount is the credit.
+    creditAccount: (accountId, amount) async =>
+        source.deductAccountBalance(accountId, -amount),
+    recordTransaction:
+        ({
+          required String id,
+          required String accountId,
+          required double amount,
+          required String merchant,
+          required String category,
+          required bool inflow,
+          required DateTime date,
+          required String reference,
+          String? note,
+        }) => source.addTransaction(
+          Txn(
+            id: id,
+            accountId: accountId,
+            merchant: merchant,
+            category: category,
+            amount: amount,
+            currencyCode: 'USD',
+            direction: inflow ? TxnDirection.inflow : TxnDirection.outflow,
+            type: TxnType.transfer,
+            status: TxnStatus.completed,
+            date: date,
+            reference: reference,
+            note: note,
+          ),
+        ),
+  );
+
+  // Requirement 21.9, second half: a matured deposit creates a notification
+  // record. The repository raises the event, this is where it becomes one.
+  repository.onMatured = (event) {
+    notifications.add(
+      AppNotification(
+        id: 'ntf_${event.deposit.id}_matured',
+        title: event.title,
+        body: event.body,
+        category: NotificationCategory.savings,
+        at: event.maturedAt,
+      ),
+    );
+    ref.invalidate(notificationsProvider);
+  };
+
+  return repository;
+});
+
+final timeDepositsProvider = FutureProvider<List<TimeDeposit>>(
+  (ref) => ref.watch(timeDepositRepositoryProvider).fetchTimeDeposits(),
+  retry: noAutomaticRetry,
+);
+
+/// Total principal placed across active deposits (Req 21.2).
+final timeDepositTotalPrincipalProvider = FutureProvider<double>(
+  (ref) => ref.watch(timeDepositRepositoryProvider).fetchTotalPrincipal(),
+  retry: noAutomaticRetry,
+);
 
 /// True when no market data key was supplied at build time, so every rate on
 /// screen is generated locally. The crypto surface reads this to state that its

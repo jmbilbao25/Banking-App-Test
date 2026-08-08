@@ -61,6 +61,15 @@ class MockNotificationRepository implements NotificationRepository {
   int get unreadCount => _rows.where((row) => !row.read).length;
 
   @override
+  void add(AppNotification notification) {
+    // Idempotent by identifier, so a repeated settlement cannot post the same
+    // notification twice.
+    if (_rows.any((row) => row.id == notification.id)) return;
+    _rows.insert(0, notification);
+    onMutate?.call();
+  }
+
+  @override
   Future<List<AppNotification>> fetchNotifications() =>
       _read('notifications', () {
         final rows = List.of(_rows)..sort((a, b) => b.at.compareTo(a.at));

@@ -184,8 +184,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
-                            onPressed: () =>
-                                context.push('/soon/password-reset'),
+                            onPressed: () => context.push('/forgot-password'),
                             style: TextButton.styleFrom(
                               foregroundColor: Palette.frostIcePale,
                             ),

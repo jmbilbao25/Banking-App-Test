@@ -10,8 +10,11 @@ import 'screens/cards_screen.dart';
 import 'screens/crypto_detail_screen.dart';
 import 'screens/crypto_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/forgot_password_screen.dart';
 import 'screens/goal_detail_screen.dart';
 import 'screens/hub_screen.dart';
+import 'screens/notifications_screen.dart';
+import 'screens/time_deposit_screen.dart';
 import 'screens/currency_selection_screen.dart';
 import 'screens/create_split_bill_screen.dart';
 import 'screens/login_screen.dart';
@@ -77,6 +80,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/pin-lock', builder: (_, _) => const PinLockScreen()),
       GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
+      GoRoute(
+        path: '/forgot-password',
+        builder: (_, _) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (_, _) => const NotificationsScreen(),
+      ),
+      GoRoute(
+        path: '/time-deposit',
+        builder: (_, _) => const TimeDepositScreen(),
+      ),
       GoRoute(
         path: '/account/:id',
         builder: (_, state) =>

@@ -168,8 +168,10 @@ class _TopRegion extends ConsumerWidget {
                   GlassIconButton(
                     icon: Icons.notifications_none_rounded,
                     label: 'Notifications',
-                    badge: true,
-                    onTap: () => context.push('/soon/notifications'),
+                    // Requirement 12.16: the badge follows the real unread
+                    // count, so it disappears once the feed is read.
+                    badgeCount: ref.watch(unreadNotificationCountProvider),
+                    onTap: () => context.push('/notifications'),
                   ),
                 ],
               ),
@@ -598,17 +600,12 @@ class _FinanceHub extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
+      // Requirement 12.9: exactly four entries, labelled Savings, Crypto,
+      // Split Bills, and Time Deposit. Cards had a fifth tile here while also
+      // being a shell destination, and a horse racing screen had a sixth.
       const SectionHeader(title: 'Finance Hub'),
       Row(
         children: const [
-          Expanded(
-            child: HubTile(
-              icon: Icons.credit_card_rounded,
-              label: 'Cards',
-              route: '/cards',
-            ),
-          ),
-          SizedBox(width: Space.x3),
           Expanded(
             child: HubTile(
               icon: Icons.savings_rounded,
@@ -616,11 +613,7 @@ class _FinanceHub extends StatelessWidget {
               route: '/savings',
             ),
           ),
-        ],
-      ),
-      const SizedBox(height: Space.x3),
-      Row(
-        children: const [
+          SizedBox(width: Space.x3),
           Expanded(
             child: HubTile(
               icon: Icons.currency_bitcoin_rounded,
@@ -628,14 +621,6 @@ class _FinanceHub extends StatelessWidget {
               route: '/crypto',
             ),
           ),
-          SizedBox(width: Space.x3),
-          Expanded(
-            child: HubTile(
-              icon: Icons.groups_rounded,
-              label: 'Split Bills',
-              route: '/split-bills',
-            ),
-          ),
         ],
       ),
       const SizedBox(height: Space.x3),
@@ -643,14 +628,18 @@ class _FinanceHub extends StatelessWidget {
         children: const [
           Expanded(
             child: HubTile(
-              icon: Icons.directions_run_rounded,
-              label: 'Netkeiba JRA',
-              route: '/netkeiba',
+              icon: Icons.groups_rounded,
+              label: 'Split Bills',
+              route: '/split-bills',
             ),
           ),
           SizedBox(width: Space.x3),
           Expanded(
-            child: SizedBox(),
+            child: HubTile(
+              icon: Icons.lock_clock_rounded,
+              label: 'Time Deposit',
+              route: '/time-deposit',
+            ),
           ),
         ],
       ),

@@ -5,41 +5,11 @@ import 'package:go_router/go_router.dart';
 import '../../core/design/tokens.dart';
 import '../../core/design/typography.dart';
 import '../../core/format/dates.dart';
-import '../../data/mock_notification_repository.dart';
 import '../../domain/notification_model.dart';
 import '../../state/providers.dart';
 import '../widgets/pressable.dart';
 import '../widgets/states.dart';
 import '../widgets/surfaces.dart';
-
-// ---------------------------------------------------------------------------
-// Providers
-// ---------------------------------------------------------------------------
-//
-// Declared here only because this feature may not edit `providers.dart`. They
-// belong beside the other repository providers and should be lifted into
-// `lib/state/providers.dart` unchanged during integration.
-
-/// Notifications repository. Overridden in tests to seed a specific feed, to
-/// remove latency, or to force the error state.
-final notificationRepositoryProvider = Provider<NotificationRepository>(
-  (ref) => MockNotificationRepository(),
-);
-
-/// The feed, newest first.
-final notificationsProvider = FutureProvider<List<AppNotification>>(
-  (ref) => ref.read(notificationRepositoryProvider).fetchNotifications(),
-  retry: noAutomaticRetry,
-);
-
-/// Unread total, for the Notifications_Screen header and for the Dashboard_Screen
-/// badge of requirement 12.16. Resolves to zero while the feed is loading or
-/// failed, so a badge never renders a figure it cannot stand behind.
-final unreadNotificationCountProvider = Provider<int>((ref) {
-  final feed = ref.watch(notificationsProvider);
-  if (!feed.hasValue) return 0;
-  return feed.requireValue.where((row) => !row.read).length;
-});
 
 // ---------------------------------------------------------------------------
 // Screen
