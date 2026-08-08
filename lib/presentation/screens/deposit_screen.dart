@@ -1,11 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../core/design/tokens.dart';
+import '../../core/design/typography.dart';
 import '../../core/format/money.dart';
 import '../../domain/models.dart';
+import '../../domain/repositories.dart';
 import '../../state/providers.dart';
+import '../widgets/money_form.dart';
+import '../widgets/money_text.dart';
+import '../widgets/pressable.dart';
+import '../widgets/states.dart';
+import '../widgets/surfaces.dart';
+import 'transaction_history_screen.dart' show txnPagingProvider;
 
+/// Add money.
+///
+/// Requirement 17.1 asks for three things: a destination account, a funding
+/// source and an amount. The previous version collected two of them, so the
+/// screen never said where the money was coming from, and it built its own
+/// dropdown, its own field styling, its own navy button and its own receipt
+/// dialog rather than reading any of them from the design system. It is now the
+/// sibling of Send money: the same brand region, the same content sheet, the
+/// same field vocabulary and the same outcome sheet.
+///
+/// There is no separate review step. A deposit is a credit, so nothing can leave
+/// the account by mistake, and App_Lock is not asked for the same reason.
 class DepositScreen extends ConsumerStatefulWidget {
   const DepositScreen({super.key});
 
@@ -13,221 +33,382 @@ class DepositScreen extends ConsumerStatefulWidget {
   ConsumerState<DepositScreen> createState() => _DepositScreenState();
 }
 
+/// One place money can arrive from.
+///
+/// Mock data (Req 6.9): this build has no card network, no open banking link and
+/// no agent network behind it. Every entry below is invented, the masked
+/// identifiers included, and choosing one changes nothing except the copy on the
+/// receipt.
+class _FundingSource {
+  const _FundingSource({
+    required this.id,
+    required this.name,
+    required this.masked,
+    required this.icon,
+  });
+
+  final String id;
+  final String name;
+
+  /// Masked identifier, shown so the choice reads as a real instrument.
+  final String masked;
+  final IconData icon;
+}
+
+/// Mock data (Req 6.9): invented funding sources, not linked instruments.
+const _fundingSources = <_FundingSource>[
+  _FundingSource(
+    id: 'src_linked_bank',
+    name: 'Linked bank account',
+    masked: '\u2022\u2022\u2022\u2022 8842',
+    icon: Icons.account_balance_rounded,
+  ),
+  _FundingSource(
+    id: 'src_debit_card',
+    name: 'Debit card',
+    masked: '\u2022\u2022\u2022\u2022 4417',
+    icon: Icons.credit_card_rounded,
+  ),
+  _FundingSource(
+    id: 'src_cash_agent',
+    name: 'Cash agent',
+    masked: 'Agent 20713',
+    icon: Icons.storefront_rounded,
+  ),
+];
+
 class _DepositScreenState extends ConsumerState<DepositScreen> {
-  final _amountController = TextEditingController();
+  final _amount = TextEditingController();
+
   String? _selectedAccountId;
+  String _fundingSourceId = _fundingSources.first.id;
   bool _submitting = false;
-  String? _errorMessage;
+  String? _formError;
 
   @override
   void dispose() {
-    _amountController.dispose();
+    _amount.dispose();
     super.dispose();
   }
 
-  Future<void> _submit(Account account) async {
-    if (_submitting) return;
+  double get _enteredAmount => double.tryParse(_amount.text.trim()) ?? 0;
 
-    final amountText = _amountController.text.trim();
-    final inputAmount = double.tryParse(amountText);
-    
-    if (inputAmount == null || inputAmount <= 0) {
-      setState(() => _errorMessage = 'Please enter a valid deposit amount.');
-      return;
-    }
+  /// Requirement 17.3: the confirm control is disabled, not merely complaining,
+  /// until the amount is a figure above zero.
+  bool get _amountIsValid => _enteredAmount > 0;
 
-    final prefs = ref.read(preferencesProvider);
-    final symbol = prefs.activeCurrency.symbol;
-    final currencyCode = prefs.currencyCode;
+  _FundingSource get _fundingSource => _fundingSources.firstWhere(
+    (source) => source.id == _fundingSourceId,
+    orElse: () => _fundingSources.first,
+  );
 
-    final baseUsdAmount = Money.convert(
-      inputAmount,
-      fromCurrency: currencyCode,
-      toCurrency: 'USD',
-    );
-
-    final refCode = 'DEP-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1E1E32) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Deposit Receipt', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Destination: ${account.name}', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87)),
-            const SizedBox(height: 8),
-            Text('Inputted Amount: $symbol${inputAmount.toStringAsFixed(2)}', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87)),
-            const SizedBox(height: 8),
-            Text('Reference Code: $refCode', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black)),
-            const Divider(height: 24),
-            Text(
-              'To complete this deposit in the real world, input this reference code at a cash machine. \n\nClosing this dialog will simulate a machine deposit to your account.',
-              style: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isDark ? const Color(0xFF4A4A7A) : const Color(0xFF003366),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              ),
-              onPressed: () async {
-                Navigator.pop(ctx); 
-                await _executeDefaultDeposit(account, baseUsdAmount, inputAmount, symbol); 
-              },
-              child: Text('Confirm Deposit ($symbol${inputAmount.toStringAsFixed(2)})', style: const TextStyle(color: Colors.white)),
-            ),
-          ),
-        ],
-      ),
+  Account _resolveDestination(List<Account> rows) {
+    _selectedAccountId ??= rows.first.id;
+    return rows.firstWhere(
+      (account) => account.id == _selectedAccountId,
+      orElse: () => rows.first,
     );
   }
 
-  Future<void> _executeDefaultDeposit(Account account, double baseUsdAmount, double inputAmount, String symbol) async {
+  /// Requirement 17.2: the credit lands on the destination account, a Deposit
+  /// transaction is recorded, and both are persisted by the repository. The read
+  /// providers are invalidated afterwards so the dashboard, the account and the
+  /// ledger all show the new figure.
+  Future<void> _confirm(Account destination) async {
+    if (_submitting || !_amountIsValid) return;
+
+    final preferences = ref.read(preferencesProvider);
+    final amount = _enteredAmount;
+    final funding = _fundingSource;
+
     setState(() {
       _submitting = true;
-      _errorMessage = null;
+      _formError = null;
     });
 
+    final baseAmount = Money.convert(
+      amount,
+      fromCurrency: preferences.currencyCode,
+      toCurrency: 'USD',
+    );
+
     try {
-      await ref.read(accountRepositoryProvider).deposit(
-            accountId: account.id,
-            amount: baseUsdAmount,
-          );
+      await ref
+          .read(accountRepositoryProvider)
+          .deposit(accountId: destination.id, amount: baseAmount);
 
       ref.invalidate(accountsProvider);
-      ref.invalidate(accountProvider(account.id));
+      ref.invalidate(accountProvider(destination.id));
       ref.invalidate(transactionsProvider);
-      
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Deposit of $symbol${inputAmount.toStringAsFixed(2)} to ${account.name} successful!')),
-        );
-      }
-    } catch (e) {
-      if (mounted) setState(() => _errorMessage = 'Deposit failed: $e');
-    } finally {
-      if (mounted) setState(() => _submitting = false);
+      ref.invalidate(txnPagingProvider);
+      if (!mounted) return;
+
+      await MoneyOutcomeSheet.show(
+        context,
+        succeeded: true,
+        heading: 'Money added',
+        detail:
+            '${Money.format(amount, currencyCode: preferences.currencyCode)} '
+            'is in ${destination.name}, funded from ${funding.name}.',
+      );
+      if (!mounted) return;
+      Navigator.of(context).maybePop();
+    } on RepositoryFailure catch (failure) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        // The repository's own copy, which is written for the customer, plus the
+        // reassurance. Never the exception itself.
+        _formError = '${failure.message} No money moved.';
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _formError = 'That deposit did not go through. No money moved.';
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final accountsAsync = ref.watch(accountsProvider);
-    final activeSymbol = ref.watch(preferencesProvider).activeCurrency.symbol;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    // Themed Input Decoration
-    final inputDecoration = InputDecoration(
-      filled: true,
-      fillColor: isDark
-          ? Colors.white.withValues(alpha: 0.08)
-          : Colors.grey.shade100,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(30),
-        borderSide: BorderSide(color: isDark ? Colors.white24 : Colors.grey.shade300, width: 1),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(30),
-        borderSide: BorderSide(color: isDark ? Colors.white10 : Colors.grey.shade300, width: 1),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(30),
-        borderSide: BorderSide(color: isDark ? Colors.white60 : const Color(0xFF003366), width: 1),
-      ),
-      hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey),
+    final accounts = ref.watch(accountsProvider);
+    final destination = accounts.hasValue && accounts.requireValue.isNotEmpty
+        ? _resolveDestination(accounts.requireValue)
+        : null;
+
+    return MoneyFormScaffold(
+      title: 'Add money',
+      subtitle: 'Choose where the money lands and how you are funding it.',
+      header: destination == null
+          ? null
+          : AccountContextCard(account: destination),
+      children: [
+        // Requirement 3.1, 3.3 and 3.4: one Async_Surface over the accounts, so
+        // the form has a shape matched skeleton, an empty state with a single
+        // action, and an inline failure with retry.
+        AsyncSection<List<Account>>(
+          value: accounts,
+          onRetry: () => ref.invalidate(accountsProvider),
+          skeleton: const _FormSkeleton(),
+          isEmpty: (rows) => rows.isEmpty,
+          empty: EmptyStateView(
+            icon: Icons.account_balance_rounded,
+            heading: 'No account to deposit into',
+            message: 'Open an account before you add money.',
+            actionLabel: 'Go back',
+            onAction: () => Navigator.of(context).maybePop(),
+          ),
+          builder: (rows) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: _form(rows, _resolveDestination(rows)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _form(List<Account> accounts, Account destination) {
+    final tokens = context.tokens;
+    final code = ref.watch(preferencesProvider).currencyCode;
+    final amount = _enteredAmount;
+    final availableHere = Money.convert(
+      destination.availableBalance,
+      fromCurrency: destination.currencyCode,
+      toCurrency: code,
     );
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: const Text('Deposit Funds'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: isDark ? Colors.white : Colors.black,
+    return [
+      const SheetFieldLabel('Deposit into'),
+      AccountSelectField(
+        accounts: accounts,
+        selectedId: destination.id,
+        onChanged: (id) => setState(() => _selectedAccountId = id),
       ),
-      body: accountsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(child: Text('Error: $err', style: TextStyle(color: isDark ? Colors.redAccent : Colors.red))),
-        data: (accounts) {
-          if (accounts.isEmpty) return const Center(child: Text('No accounts available.'));
-          if (_selectedAccountId == null && accounts.isNotEmpty) {
-            _selectedAccountId = accounts.first.id;
-          }
-          final selectedAccount = accounts.firstWhere((a) => a.id == _selectedAccountId, orElse: () => accounts.first);
+      const SizedBox(height: Space.x5),
+      const SheetFieldLabel('Funding source'),
+      // Requirement 17.1, the part that was missing: where the money is coming
+      // from. Rows rather than a second dropdown, so the choice is one tap and
+      // the masked identifier is readable without opening anything.
+      for (final source in _fundingSources) ...[
+        _FundingSourceRow(
+          key: ValueKey(source.id),
+          source: source,
+          selected: source.id == _fundingSourceId,
+          onTap: _submitting
+              ? null
+              : () => setState(() => _fundingSourceId = source.id),
+        ),
+        const SizedBox(height: Space.x2),
+      ],
+      const SizedBox(height: Space.x1),
+      Text(
+        'Funding sources in this build are mock data.',
+        style: AppType.bodySmall.copyWith(color: tokens.textSecondary),
+      ),
+      const SizedBox(height: Space.x5),
+      const SheetFieldLabel('Amount'),
+      AmountField(
+        controller: _amount,
+        // No error copy here. Requirement 17.3 asks for a disabled control, and
+        // a field that scolds the customer for not having typed yet would be
+        // both louder and less useful than a button that is plainly not ready.
+        onChanged: (_) => setState(() => _formError = null),
+      ),
+      const SizedBox(height: Space.x4),
+      const SoftDivider(inset: 0),
+      // No separate review step, so the one figure a review would have added is
+      // stated here instead: what the account holds once this lands. The amount
+      // itself is not repeated, because it is in the field directly above.
+      MoneyReviewRow(
+        label: 'Balance after deposit',
+        emphasised: true,
+        value: MoneyText(
+          availableHere + amount,
+          currencyCode: code,
+          style: AppType.numericMedium,
+          maskable: false,
+          label: 'Balance after deposit',
+        ),
+      ),
+      if (_formError != null) ...[
+        const SizedBox(height: Space.x4),
+        InlineFormError(_formError!),
+      ],
+      const SizedBox(height: Space.x6),
+      PrimaryAction(
+        label: 'Confirm deposit',
+        icon: Icons.arrow_downward_rounded,
+        busy: _submitting,
+        // Requirement 17.3: null while the amount is zero, negative or empty,
+        // which renders the control disabled rather than tappable and rejecting.
+        onPressed: _amountIsValid ? () => _confirm(destination) : null,
+      ),
+    ];
+  }
+}
 
-          return Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Select Destination Account', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedAccountId,
-                  decoration: inputDecoration,
-                  dropdownColor: isDark ? const Color(0xFF1E1E32) : Colors.white,
-                  items: accounts.map((a) {
-                    return DropdownMenuItem(
-                      value: a.id,
-                      child: Text(a.name, style: TextStyle(color: isDark ? Colors.white : Colors.black)),
-                    );
-                  }).toList(),
-                  onChanged: (val) {
-                    if (val != null) setState(() => _selectedAccountId = val);
-                  },
-                ),
-                const SizedBox(height: 24),
-                Text('Amount', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _amountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
-                  ],
-                  style: TextStyle(color: isDark ? Colors.white : Colors.black),
-                  decoration: inputDecoration.copyWith(
-                    prefixText: '$activeSymbol ',
-                    prefixStyle: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16),
-                    hintText: '0.00',
-                  ),
-                ),
-                if (_errorMessage != null) ...[
-                  const SizedBox(height: 16),
-                  Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
-                ],
-                const Spacer(),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isDark ? const Color(0xFF4A4A7A) : const Color(0xFF003366),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
-                    ),
-                    onPressed: _submitting ? null : () => _submit(selectedAccount),
-                    child: _submitting
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text('Confirm Deposit', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                )
-              ],
+/// One selectable funding source.
+///
+/// Selection is carried by the accent border, the tinted leading badge and the
+/// filled check, so it survives both themes and does not rely on colour alone.
+class _FundingSourceRow extends StatelessWidget {
+  const _FundingSourceRow({
+    required this.source,
+    required this.selected,
+    required this.onTap,
+    super.key,
+  });
+
+  final _FundingSource source;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return Semantics(
+      selected: selected,
+      child: Pressable(
+        onTap: onTap,
+        borderRadius: AppRadius.md,
+        child: Container(
+          width: double.infinity,
+          // Padding rather than a fixed height, so the row grows with the text
+          // scale instead of clipping it (Req 4.3).
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.x4,
+            vertical: Space.x3,
+          ),
+          decoration: BoxDecoration(
+            color: selected ? tokens.interactiveSecondary : tokens.surface,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(
+              color: selected ? tokens.accent : tokens.border,
+              width: selected ? 2 : 1,
             ),
-          );
-        },
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: Space.x10,
+                height: Space.x10,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? tokens.accent.withValues(alpha: 0.16)
+                      : tokens.surfaceRaised,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  source.icon,
+                  size: 20,
+                  color: selected ? tokens.accent : tokens.textSecondary,
+                ),
+              ),
+              const SizedBox(width: Space.x3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      source.name,
+                      style: AppType.titleSmall.copyWith(
+                        color: tokens.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: Space.x1),
+                    Text(
+                      source.masked,
+                      style: AppType.numericSmall.copyWith(
+                        color: tokens.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: Space.x3),
+              Icon(
+                selected
+                    ? Icons.check_circle_rounded
+                    : Icons.circle_outlined,
+                size: 22,
+                color: selected ? tokens.accent : tokens.border,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
+}
+
+/// Shape matched to the form: account picker, three funding rows, amount, then
+/// the action, per requirement 3.1.
+class _FormSkeleton extends StatelessWidget {
+  const _FormSkeleton();
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SkeletonBlock(width: 96, height: 12),
+      const SizedBox(height: Space.x2),
+      const SkeletonBlock(height: 56, radius: AppRadius.md),
+      const SizedBox(height: Space.x5),
+      const SkeletonBlock(width: 112, height: 12),
+      const SizedBox(height: Space.x2),
+      for (var row = 0; row < _fundingSources.length; row++) ...[
+        const SkeletonBlock(height: 64, radius: AppRadius.md),
+        const SizedBox(height: Space.x2),
+      ],
+      const SizedBox(height: Space.x4),
+      const SkeletonBlock(width: 96, height: 12),
+      const SizedBox(height: Space.x2),
+      const SkeletonBlock(height: 56, radius: AppRadius.md),
+      const SizedBox(height: Space.x6),
+      const SkeletonBlock(height: 52, radius: AppRadius.pill),
+    ],
+  );
 }
