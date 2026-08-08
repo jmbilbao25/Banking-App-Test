@@ -112,7 +112,6 @@ class SupabaseMappers {
       email: map['email'] as String,
       mobile: map['mobile'] as String,
       memberSince: DateTime.parse(map['member_since'] as String),
-      pinCode: map['pin_code']?.toString() ?? '123456',
     );
   }
 
@@ -645,7 +644,6 @@ class SupabaseProfileRepository implements ProfileRepository {
         'email': profile.email,
         'mobile': profile.mobile,
         'member_since': profile.memberSince.toIso8601String(),
-        'pin_code': profile.pinCode,
       });
       return profile;
     } catch (e) {

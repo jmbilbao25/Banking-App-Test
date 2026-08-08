@@ -18,6 +18,11 @@ dependencies:
   mobile_scanner: ^7.4.0
   qr_flutter: ^4.1.0
   supabase_flutter: ^2.8.0
+  # Persistence_Store. supabase_flutter already pulls shared_preferences in for
+  # its own session storage, so depending on it directly adds no native plugin.
+  shared_preferences: ^2.3.0
+  # Used to store a salted digest of the App_Lock PIN instead of the PIN itself.
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:

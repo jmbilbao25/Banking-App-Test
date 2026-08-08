@@ -113,10 +113,9 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
           ),
           FilledButton(
             onPressed: () {
-              final pin = controller.text.trim();
-              final profile = ref.read(profileProvider).value;
-              final expectedPin = profile?.pinCode ?? '123456';
-              if (pin == expectedPin || pin == '123456') {
+              // Checked against the stored digest. The previous literal
+              // comparison accepted a known PIN on every card in the build.
+              if (ref.read(pinVaultProvider).verify(controller.text.trim())) {
                 Navigator.of(ctx).pop(true);
               } else {
                 HapticFeedback.vibrate();

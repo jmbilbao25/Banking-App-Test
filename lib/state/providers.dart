@@ -4,8 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/config/api_config.dart';
+import '../core/persistence/credential_vault.dart';
+import '../core/persistence/persistence_store.dart';
+import '../core/persistence/pin_vault.dart';
 import '../core/supabase_config.dart';
 import '../data/mock_data_source.dart';
+import '../data/mock_snapshot.dart';
 import '../data/mock_market_repository.dart';
 import '../data/mock_repositories.dart';
 import '../domain/models.dart';
@@ -22,6 +26,24 @@ import 'txn_filter.dart';
 /// belongs to the user here, through the retry control in the error state.
 Duration? noAutomaticRetry(int retryCount, Object error) => null;
 
+/// Persistence_Store. `main` overrides this with the real device backed store
+/// before `runApp`; the in memory default keeps tests and any build without a
+/// platform channel working with identical behaviour, minus durability.
+final persistenceStoreProvider = Provider<PersistenceStore>(
+  (ref) => InMemoryPersistenceStore(),
+);
+
+/// Holds the App_Lock PIN as a salted digest, never as the PIN itself.
+final pinVaultProvider = Provider<PinVault>(
+  (ref) => PinVault(ref.watch(persistenceStoreProvider)),
+);
+
+/// Holds demo account passwords as salted digests, so requirement 5.9 is met and
+/// requirements 9.8 and 11.6 have a real secret to work against.
+final credentialVaultProvider = Provider<CredentialVault>(
+  (ref) => CredentialVault(ref.watch(persistenceStoreProvider)),
+);
+
 /// Controls whether the app uses Supabase or offline Mock repositories.
 final useSupabaseProvider = NotifierProvider<UseSupabaseNotifier, bool>(
   UseSupabaseNotifier.new,
@@ -37,9 +59,35 @@ class UseSupabaseNotifier extends Notifier<bool> {
 
 /// Data source and repositories. Override [mockDataSourceProvider] in tests to
 /// seed a different world or to remove latency.
-final mockDataSourceProvider = Provider<MockDataSource>(
-  (ref) => MockDataSource(),
-);
+///
+/// On construction the persisted snapshot is loaded if one exists, satisfying
+/// requirement 6.7, and every subsequent write is written back through
+/// [onMutate], satisfying requirement 6.6.
+final mockDataSourceProvider = Provider<MockDataSource>((ref) {
+  final store = ref.watch(persistenceStoreProvider);
+  final now = DateTime.now();
+  final source = MockDataSource(
+    snapshot: MockDataSnapshot.tryDecode(
+      store.readJson(StoreKeys.dataSnapshot),
+      now: now,
+    ),
+    credentials: ref.watch(credentialVaultProvider),
+  );
+
+  // Writes arrive in bursts, for example a transfer that debits one account and
+  // credits another. Coalescing into a microtask keeps one encode per burst
+  // instead of one per field change.
+  var scheduled = false;
+  source.onMutate = () {
+    if (scheduled) return;
+    scheduled = true;
+    scheduleMicrotask(() {
+      scheduled = false;
+      store.writeJson(StoreKeys.dataSnapshot, source.toSnapshot().toJson());
+    });
+  };
+  return source;
+});
 
 final accountRepositoryProvider = Provider<AccountRepository>((ref) {
   final useSupabase = ref.watch(useSupabaseProvider);

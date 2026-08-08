@@ -1,25 +1,64 @@
 import 'dart:math';
 
+import '../core/persistence/credential_vault.dart';
 import '../domain/models.dart';
 import '../domain/repositories.dart';
 import 'mock_seed.dart';
+import 'mock_snapshot.dart';
 
 /// Seeded in memory store shared by every mock repository.
 ///
 /// Reads resolve after a randomised delay so loading skeletons are observable,
 /// and no call touches the network.
 class MockDataSource {
-  MockDataSource({DateTime? now, Random? random})
-    : _random = random ?? Random(7),
-      _accounts = List.of(MockSeed.accounts),
-      _cards = List.of(MockSeed.cards),
-      _transactions = MockSeed.transactions(now: now),
-      _promos = List.of(MockSeed.promos),
-      _profile = MockSeed.profile,
-      _goals = MockSeed.goalSaves(now: now),
-      _goalTxns = MockSeed.goalTransactions(now: now),
-      _goalCounter = MockSeed.goalSaves().length,
-      _cardCounter = MockSeed.cards.length;
+  /// Pass [snapshot] to resume a persisted data set instead of reseeding, which
+  /// is what requirement 6.7 asks for on launch.
+  MockDataSource({
+    DateTime? now,
+    Random? random,
+    MockDataSnapshot? snapshot,
+    this.credentials,
+  }) : _random = random ?? Random(7),
+       _accounts = List.of(snapshot?.accounts ?? MockSeed.accounts),
+       _cards = List.of(snapshot?.cards ?? MockSeed.cards),
+       _transactions = snapshot == null
+           ? MockSeed.transactions(now: now)
+           : List.of(snapshot.transactions),
+       _promos = List.of(MockSeed.promos),
+       _profile = snapshot?.profile ?? MockSeed.profile,
+       _goals = snapshot == null
+           ? MockSeed.goalSaves(now: now)
+           : List.of(snapshot.goals),
+       _goalTxns = snapshot == null
+           ? MockSeed.goalTransactions(now: now)
+           : List.of(snapshot.goalTxns),
+       _goalCounter = snapshot?.goalCounter ?? MockSeed.goalSaves().length,
+       _cardCounter = snapshot?.cardCounter ?? MockSeed.cards.length;
+
+  /// Verifies demo passwords. Null in tests and in any build without a store, in
+  /// which case any password of a valid length is accepted.
+  final CredentialVault? credentials;
+
+  /// Invoked after every successful write so the owner can persist the data set,
+  /// per requirement 6.6. Set by the provider that also owns the store.
+  void Function()? onMutate;
+
+  /// Captures the mutable half of the data set for persistence.
+  MockDataSnapshot toSnapshot() => MockDataSnapshot(
+    accounts: List.of(_accounts),
+    cards: List.of(_cards),
+    transactions: List.of(_transactions),
+    profile: _profile,
+    goals: List.of(_goals),
+    goalTxns: List.of(_goalTxns),
+    goalCounter: _goalCounter,
+    cardCounter: _cardCounter,
+  );
+
+  /// Called at the end of every mutating method. Five writes deliberately bypass
+  /// [read], and two are synchronous, so the notification lives here rather than
+  /// in the read gate.
+  void _touch() => onMutate?.call();
 
   final Random _random;
   final List<Account> _accounts;
@@ -57,6 +96,14 @@ class MockDataSource {
     return body();
   }
 
+  /// Write gate. Same latency and failure behaviour as [read], and it notifies
+  /// afterwards so the mutated data set is persisted, per requirement 6.6.
+  Future<T> _write<T>(String domain, T Function() body) async {
+    final result = await read(domain, body);
+    _touch();
+    return result;
+  }
+
   Future<List<Account>> accounts() =>
       read('accounts', () => List<Account>.unmodifiable(_accounts));
 
@@ -69,7 +116,7 @@ class MockDataSource {
   });
 
   Future<Account> deposit(String accountId, double amount) async {
-    return read('accounts', () {
+    return _write('accounts', () {
       final index = _accounts.indexWhere((acc) => acc.id == accountId);
       if (index == -1) {
         throw const RepositoryFailure('Account not found.');
@@ -116,7 +163,7 @@ class MockDataSource {
     required double amount,
     String? note,
   }) async {
-    return read('accounts', () {
+    return _write('accounts', () {
       final index = _accounts.indexWhere((acc) => acc.id == fromAccountId);
       if (index == -1) {
         throw const RepositoryFailure('Source account not found.');
@@ -247,11 +294,12 @@ class MockDataSource {
       spendingLimit: spendingLimit,
     );
     _cards.add(card);
+    _touch();
     return card;
   }
 
   Future<BankCard> toggleCardFreeze(String cardId) async {
-    return read('cards', () {
+    return _write('cards', () {
       final index = _cards.indexWhere((c) => c.id == cardId);
       if (index == -1) {
         throw const RepositoryFailure('Card not found.');
@@ -284,7 +332,7 @@ class MockDataSource {
   }
 
   Future<BankCard> updateSpendingLimit(String cardId, double limit) async {
-    return read('cards', () {
+    return _write('cards', () {
       final index = _cards.indexWhere((c) => c.id == cardId);
       if (index == -1) {
         throw const RepositoryFailure('Card not found.');
@@ -311,7 +359,7 @@ class MockDataSource {
   }
 
   Future<UserProfile> updateProfile(UserProfile newProfile) async {
-    return read('profile', () {
+    return _write('profile', () {
       _profile = newProfile;
       if (_session != null) _session = newProfile;
       return _profile;
@@ -336,6 +384,7 @@ class MockDataSource {
 
   void addTransaction(Txn txn) {
     _transactions.insert(0, txn);
+    _touch();
   }
 
   void deductAccountBalance(String accountId, double amount) {
@@ -359,6 +408,7 @@ class MockDataSource {
         cryptoQuantity: old.cryptoQuantity,
         cryptoUnit: old.cryptoUnit,
       );
+      _touch();
     }
   }
 
@@ -367,10 +417,20 @@ class MockDataSource {
 
   Future<UserProfile> profile() => read('profile', () => _profile);
 
-  void replaceProfile(UserProfile profile) => _profile = profile;
+  void replaceProfile(UserProfile profile) {
+    _profile = profile;
+    _touch();
+  }
 
-  // Session handling. The MVP keeps the session in memory for the running
-  // process; a persistence store is a later task and changes no widget.
+  /// Adopts a session restored from Persistence_Store, so requirement 9.5 can
+  /// hand a retained session back on the next launch.
+  void adoptSession(UserProfile profile) {
+    _profile = profile;
+    _session = profile;
+  }
+
+  // Session handling. The session itself is persisted by the owning provider, so
+  // a restore on the next launch returns the retained profile.
   Future<UserProfile?> restoreSession() async {
     await Future<void>.delayed(const Duration(milliseconds: 400));
     return _session;
@@ -388,101 +448,50 @@ class MockDataSource {
 
     final cleanEmail = email.trim().toLowerCase();
 
-    // Map of seeded profiles and their valid passwords
-    final credentialsMap = <String, ({String password, UserProfile profile})>{
-      'ava.mercado@frostbank.app': (
-        password: 'frost2026',
-        profile: MockSeed.profile,
-      ),
-      'yujin.an@frostbank.app': (
-        password: 'ive2026',
-        profile: UserProfile(
-          id: '00000000-0000-0000-0000-000000000002',
-          fullName: 'An Yujin',
-          email: 'yujin.an@frostbank.app',
-          mobile: '+82 10-1001-0901',
-          memberSince: DateTime(2021, 12, 1),
-        ),
-      ),
-      'wonyoung.jang@frostbank.app': (
-        password: 'ive2026',
-        profile: UserProfile(
-          id: '00000000-0000-0000-0000-000000000003',
-          fullName: 'Jang Wonyoung',
-          email: 'wonyoung.jang@frostbank.app',
-          mobile: '+82 10-2002-0831',
-          memberSince: DateTime(2021, 12, 1),
-        ),
-      ),
-      'gaeul.kim@frostbank.app': (
-        password: 'ive2026',
-        profile: UserProfile(
-          id: '00000000-0000-0000-0000-000000000004',
-          fullName: 'Gaeul (Kim Gaeul)',
-          email: 'gaeul.kim@frostbank.app',
-          mobile: '+82 10-3003-0924',
-          memberSince: DateTime(2021, 12, 1),
-        ),
-      ),
-      'rei.naoi@frostbank.app': (
-        password: 'ive2026',
-        profile: UserProfile(
-          id: '00000000-0000-0000-0000-000000000005',
-          fullName: 'Rei (Naoi Rei)',
-          email: 'rei.naoi@frostbank.app',
-          mobile: '+82 10-4004-0203',
-          memberSince: DateTime(2021, 12, 1),
-        ),
-      ),
-      'liz.kim@frostbank.app': (
-        password: 'ive2026',
-        profile: UserProfile(
-          id: '00000000-0000-0000-0000-000000000006',
-          fullName: 'Liz (Kim Jiwon)',
-          email: 'liz.kim@frostbank.app',
-          mobile: '+82 10-5005-1121',
-          memberSince: DateTime(2021, 12, 1),
-        ),
-      ),
-      'hyunseo.lee@frostbank.app': (
-        password: 'ive2026',
-        profile: UserProfile(
-          id: '00000000-0000-0000-0000-000000000007',
-          fullName: 'Leeseo (Lee Hyunseo)',
-          email: 'hyunseo.lee@frostbank.app',
-          mobile: '+82 10-6006-0221',
-          memberSince: DateTime(2021, 12, 1),
-        ),
-      ),
-    };
-
-    final match = credentialsMap[cleanEmail];
-    if (match != null) {
-      if (password != match.password) {
-        throw const RepositoryFailure('Incorrect password. Please try again.');
-      }
-      _profile = match.profile;
-      _session = match.profile;
-      return match.profile;
+    // Requirement 9.8: an incorrect password is rejected with one message that
+    // names neither field, so the response cannot be used to discover which
+    // addresses are registered.
+    final vault = credentials;
+    if (vault != null &&
+        !vault.verify(email: cleanEmail, password: password)) {
+      throw const RepositoryFailure(
+        'That email or password is incorrect.',
+      );
     }
 
+    final profile = _directoryProfile(cleanEmail);
+
+    // The first password used for an address becomes that address's password,
+    // so the seeded demo profiles stay reachable without a password in source.
+    if (vault != null && !vault.hasCredential(cleanEmail)) {
+      await vault.setPassword(email: cleanEmail, password: password);
+    }
+
+    _profile = profile;
+    _session = profile;
+    _touch();
+    return profile;
+  }
+
+  /// Resolves a seeded demo profile for [cleanEmail], or builds one from the
+  /// address. No password appears here, per requirement 5.9.
+  UserProfile _directoryProfile(String cleanEmail) {
+    if (MockSeed.profile.email.toLowerCase() == cleanEmail) {
+      return MockSeed.profile;
+    }
     if (_profile.email.toLowerCase() == cleanEmail) {
-      _session = _profile;
       return _profile;
     }
-
-    final name = _formatNameFromEmail(cleanEmail);
-    final dynamicUser = UserProfile(
+    for (final entry in MockSeed.demoDirectory) {
+      if (entry.email.toLowerCase() == cleanEmail) return entry;
+    }
+    return UserProfile(
       id: 'usr_${cleanEmail.hashCode.abs()}',
-      fullName: name,
+      fullName: _formatNameFromEmail(cleanEmail),
       email: cleanEmail,
-      mobile: '+82 10-3003-0924',
+      mobile: MockSeed.demoMobile,
       memberSince: DateTime.now(),
     );
-
-    _profile = dynamicUser;
-    _session = dynamicUser;
-    return dynamicUser;
   }
 
   String _formatNameFromEmail(String email) {
@@ -515,6 +524,9 @@ class MockDataSource {
       memberSince: DateTime.now(),
     );
     _session = _profile;
+    // Requirement 10.2: the new account's password becomes its credential.
+    await credentials?.setPassword(email: _profile.email, password: password);
+    _touch();
     return _profile;
   }
 
@@ -577,6 +589,7 @@ class MockDataSource {
         ),
       );
     }
+    _touch();
     return newGoal;
   }
 
@@ -607,6 +620,7 @@ class MockDataSource {
         date: DateTime.now(),
       ),
     );
+    _touch();
     return updated;
   }
 
@@ -642,6 +656,7 @@ class MockDataSource {
         date: DateTime.now(),
       ),
     );
+    _touch();
     return updated;
   }
 
@@ -663,10 +678,11 @@ class MockDataSource {
           amount: old.balance,
           runningBalance: 0,
           date: DateTime.now(),
-          note: 'Goal closed — funds returned',
+          note: 'Goal closed, funds returned',
         ),
       );
     }
+    _touch();
     return updated;
   }
 

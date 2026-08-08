@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/design/tokens.dart';
 import '../../core/design/typography.dart';
+import '../../core/persistence/pin_vault.dart';
 import '../../state/providers.dart';
 import '../../state/session_controller.dart';
 import '../widgets/brand.dart';
@@ -19,21 +20,45 @@ class PinLockScreen extends ConsumerStatefulWidget {
   ConsumerState<PinLockScreen> createState() => _PinLockScreenState();
 }
 
+/// What the keypad is currently collecting.
+enum _PinStage {
+  /// A PIN exists and is being checked.
+  verify,
+
+  /// No PIN exists yet, so the first of two matching entries is being taken.
+  create,
+
+  /// Confirming the entry taken during [create], per requirement 10.6.
+  confirm,
+}
+
 class _PinLockScreenState extends ConsumerState<PinLockScreen> {
   String _pin = '';
   bool _working = false;
   String? _errorMessage;
+  _PinStage _stage = _PinStage.verify;
+  String? _firstEntry;
+
+  @override
+  void initState() {
+    super.initState();
+    // A signed in launch with no stored PIN would otherwise be unable to get in,
+    // so the screen collects one instead of refusing every entry.
+    _stage = ref.read(pinVaultProvider).hasPin
+        ? _PinStage.verify
+        : _PinStage.create;
+  }
 
   void _onDigitPressed(String digit) {
-    if (_pin.length >= 6 || _working) return;
+    if (_pin.length >= PinVault.pinLength || _working) return;
     HapticFeedback.lightImpact();
     setState(() {
       _pin += digit;
       _errorMessage = null;
     });
 
-    if (_pin.length == 6) {
-      _verifyAndUnlock();
+    if (_pin.length == PinVault.pinLength) {
+      _submit();
     }
   }
 
@@ -46,48 +71,97 @@ class _PinLockScreenState extends ConsumerState<PinLockScreen> {
     });
   }
 
-  Future<void> _verifyAndUnlock() async {
+  Future<void> _submit() async {
     setState(() => _working = true);
-
     await Future<void>.delayed(const Duration(milliseconds: 200));
+    if (!mounted) return;
 
-    final profileAsync = ref.read(profileProvider);
-    final expectedPin = profileAsync.value?.pinCode ?? '123456';
-
-    if (_pin == expectedPin || _pin == '123456') {
-      try {
-        final session = ref.read(sessionProvider);
-        if (session is! SessionSignedIn) {
-          final preferences = ref.read(preferencesProvider);
-          final activeProfileEmail = ref.read(profileProvider).value?.email;
-          final emailToUse = (preferences.rememberedEmail != null && preferences.rememberedEmail!.isNotEmpty)
-              ? preferences.rememberedEmail!
-              : (activeProfileEmail ?? 'ava.mercado@frostbank.app');
-          final passwordToUse = emailToUse.toLowerCase() == 'ava.mercado@frostbank.app' ? 'frost2026' : 'ive2026';
-
-          await ref.read(sessionProvider.notifier).signIn(
-                email: emailToUse,
-                password: passwordToUse,
-              );
-        }
-        if (mounted) context.go('/');
-      } catch (e) {
-        if (mounted) {
+    switch (_stage) {
+      case _PinStage.create:
+        setState(() {
+          _firstEntry = _pin;
+          _pin = '';
+          _stage = _PinStage.confirm;
+          _working = false;
+        });
+      case _PinStage.confirm:
+        if (_pin == _firstEntry) {
+          await ref.read(pinVaultProvider).setPin(_pin);
+          if (!mounted) return;
+          await _enterApplication();
+        } else {
+          HapticFeedback.vibrate();
           setState(() {
             _working = false;
-            _errorMessage = 'Could not unlock session. Try again.';
+            _errorMessage = 'Those PINs did not match. Start again.';
             _pin = '';
+            _firstEntry = null;
+            _stage = _PinStage.create;
           });
         }
-      }
-    } else {
-      HapticFeedback.vibrate();
-      setState(() {
-        _working = false;
-        _errorMessage = 'Incorrect PIN. Try 123456.';
-        _pin = '';
-      });
+      case _PinStage.verify:
+        await _verify();
     }
+  }
+
+  Future<void> _verify() async {
+    final vault = ref.read(pinVaultProvider);
+
+    if (vault.verify(_pin)) {
+      await vault.clearFailures();
+      if (!mounted) return;
+      await _enterApplication();
+      return;
+    }
+
+    await vault.recordFailure();
+    if (!mounted) return;
+
+    // Requirement 5.2: five consecutive incorrect entries clear the session and
+    // return to login with the reason stated.
+    if (vault.isLockedOut) {
+      await ref.read(sessionProvider.notifier).signOut(
+        notice:
+            'You entered an incorrect PIN ${PinVault.maxAttempts} times, so we '
+            'signed you out. Please sign in again.',
+      );
+      if (!mounted) return;
+      context.go('/login');
+      return;
+    }
+
+    HapticFeedback.vibrate();
+    final remaining = vault.attemptsRemaining;
+    setState(() {
+      _working = false;
+      _errorMessage = remaining == 1
+          ? 'Incorrect PIN. One more attempt before you are signed out.'
+          : 'Incorrect PIN. $remaining attempts remaining.';
+      _pin = '';
+    });
+  }
+
+  /// Reveals the authenticated surface. The session is whatever
+  /// Persistence_Store retained, so no credential is needed here.
+  Future<void> _enterApplication() async {
+    final session = ref.read(sessionProvider);
+    if (session is! SessionSignedIn) {
+      final restored = ref
+          .read(sessionProvider.notifier)
+          .unlockPersistedSession();
+      if (!restored) {
+        if (!mounted) return;
+        setState(() {
+          _working = false;
+          _errorMessage = null;
+          _pin = '';
+        });
+        context.go('/login');
+        return;
+      }
+    }
+    if (!mounted) return;
+    context.go('/');
   }
 
   @override

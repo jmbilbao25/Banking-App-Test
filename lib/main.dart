@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/design/theme.dart';
+import 'core/persistence/persistence_store.dart';
 import 'core/supabase_config.dart';
 import 'presentation/router.dart';
 import 'state/providers.dart';
@@ -15,8 +16,17 @@ Future<void> main() async {
   ]);
   await SupabaseConfig.initialize();
 
+  // Persistence_Store is opened before the first frame so preference reads are
+  // synchronous. Hydrating later would show the default theme and then correct
+  // it, which reads as a flash on every launch.
+  final store = await openPersistenceStore();
+
   runApp(
-    const ProviderScope(retry: noAutomaticRetry, child: FrostBankApp()),
+    ProviderScope(
+      retry: noAutomaticRetry,
+      overrides: [persistenceStoreProvider.overrideWithValue(store)],
+      child: const FrostBankApp(),
+    ),
   );
 }
 

@@ -653,6 +653,12 @@ class GoalTxn {
   final String? note;
 }
 
+/// The signed in customer.
+///
+/// This type deliberately carries no PIN. The App_Lock PIN is held by `PinVault`
+/// as a salted digest, because requirement 5.9 forbids a credential value in the
+/// source and a PIN on this model would be written to disk in the clear by the
+/// data set snapshot.
 class UserProfile {
   const UserProfile({
     required this.id,
@@ -660,7 +666,6 @@ class UserProfile {
     required this.email,
     required this.mobile,
     required this.memberSince,
-    this.pinCode = '123456',
   });
 
   final String id;
@@ -668,7 +673,18 @@ class UserProfile {
   final String email;
   final String mobile;
   final DateTime memberSince;
-  final String pinCode;
+
+  UserProfile copyWith({
+    String? fullName,
+    String? email,
+    String? mobile,
+  }) => UserProfile(
+    id: id,
+    fullName: fullName ?? this.fullName,
+    email: email ?? this.email,
+    mobile: mobile ?? this.mobile,
+    memberSince: memberSince,
+  );
 
   String get initials {
     final parts = fullName.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
