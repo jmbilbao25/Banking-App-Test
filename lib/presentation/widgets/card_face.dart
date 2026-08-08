@@ -1066,6 +1066,12 @@ class MiniCardFace extends StatelessWidget {
   final BankCard card;
   final double width;
 
+  /// Narrower than this and the scaled labels are no longer readable, so they
+  /// are dropped rather than rendered as illegible microtype.
+  static const double minWidthForLabels = 72;
+
+  bool get _showsLabels => width >= minWidthForLabels;
+
   @override
   Widget build(BuildContext context) {
     final border = BorderRadius.circular(AppRadius.sm);
@@ -1113,29 +1119,39 @@ class MiniCardFace extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      card.last4,
-                      style: AppType.numericSmall.copyWith(
-                        color: Palette.frostInk.withValues(alpha: 0.72),
-                        fontSize: width * 0.11,
-                        letterSpacing: 0.6,
+                    // Both labels scale with the thumbnail, so under the
+                    // threshold they fall to around five logical pixels and
+                    // become texture rather than text. At that size the card is
+                    // an identity chip, not a data surface, so it carries the
+                    // mark alone. The digits and the kind are on the full face
+                    // and on the card detail screen, which is where a customer
+                    // goes to read them.
+                    if (_showsLabels) ...[
+                      Text(
+                        card.last4,
+                        style: AppType.numericSmall.copyWith(
+                          color: Palette.frostInk.withValues(alpha: 0.72),
+                          fontSize: width * 0.11,
+                          letterSpacing: 0.6,
+                        ),
                       ),
-                    ),
+                    ],
                     Expanded(
                       child: Center(
                         child: FrostGlyph(
-                          width: width * 0.5,
+                          width: width * (_showsLabels ? 0.5 : 0.62),
                           excludeSemantics: true,
                         ),
                       ),
                     ),
-                    Text(
-                      card.kind.label.toUpperCase(),
-                      style: AppType.labelSmall.copyWith(
-                        color: Colors.white.withValues(alpha: 0.86),
-                        fontSize: width * 0.09,
+                    if (_showsLabels)
+                      Text(
+                        card.kind.label.toUpperCase(),
+                        style: AppType.labelSmall.copyWith(
+                          color: Colors.white.withValues(alpha: 0.86),
+                          fontSize: width * 0.09,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
