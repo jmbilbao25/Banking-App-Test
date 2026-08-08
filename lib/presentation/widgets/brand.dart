@@ -182,7 +182,10 @@ abstract final class FrostGradients {
     _radial(
       canvas,
       rect,
-      center: Offset(rect.left + rect.width * 0.12, rect.top + rect.height * 0.9),
+      center: Offset(
+        rect.left + rect.width * 0.12,
+        rect.top + rect.height * 0.9,
+      ),
       radius: reach * 0.78,
       stops: const [0, 0.18, 0.35, 0.58, 1],
       colors: [
@@ -198,7 +201,10 @@ abstract final class FrostGradients {
     _radial(
       canvas,
       rect,
-      center: Offset(rect.left + rect.width * 0.96, rect.top + rect.height * 0.04),
+      center: Offset(
+        rect.left + rect.width * 0.96,
+        rect.top + rect.height * 0.04,
+      ),
       radius: reach * 0.72,
       stops: const [0, 0.25, 0.6, 1],
       colors: [
@@ -213,7 +219,10 @@ abstract final class FrostGradients {
     _radial(
       canvas,
       rect,
-      center: Offset(rect.left + rect.width * 0.9, rect.top + rect.height * 0.35),
+      center: Offset(
+        rect.left + rect.width * 0.9,
+        rect.top + rect.height * 0.35,
+      ),
       radius: reach * 0.6,
       stops: const [0, 0.4, 1],
       colors: [
@@ -368,11 +377,15 @@ class GlassPanel extends StatelessWidget {
 
     if (reduceTransparency) return content;
 
-    return ClipRRect(
-      borderRadius: border,
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: content,
+    // Confined to its own layer, so the blur is not re-rasterised every time
+    // something else in the enclosing repaint region changes.
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: border,
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: content,
+        ),
       ),
     );
   }
@@ -668,10 +681,16 @@ class SoftCard extends StatelessWidget {
         color: tokens.surfaceRaised,
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(
-          color: tokens.isDark ? tokens.border : tokens.border.withValues(alpha: 0.5),
+          color: tokens.isDark
+              ? tokens.border
+              : tokens.border.withValues(alpha: 0.5),
         ),
         boxShadow: [
-          BoxShadow(color: tokens.shadow, blurRadius: 18, offset: const Offset(0, 8)),
+          BoxShadow(
+            color: tokens.shadow,
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
         ],
       ),
       child: Padding(padding: padding, child: child),

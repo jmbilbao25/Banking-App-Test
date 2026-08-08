@@ -1076,83 +1076,90 @@ class MiniCardFace extends StatelessWidget {
   Widget build(BuildContext context) {
     final border = BorderRadius.circular(AppRadius.sm);
 
-    return SizedBox(
-      width: width,
-      height: CardFace.heightFor(width),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: border,
-          boxShadow: [
-            BoxShadow(
-              color: Palette.frostInk.withValues(alpha: 0.3),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: border,
-          // Not animated, and no crystals. A strip of these can be on screen at
-          // once, and the freeze is already told on the full face; paying for it
-          // again on a 96 pixel thumbnail is not worth the frames.
-          child: CustomPaint(
-            painter: _CardFacePainter(
-              sheen: 0,
-              frost: card.status == CardStatus.frozen ? 1 : 0,
-              radius: AppRadius.sm,
-              colourway: colourwayFor(card.id),
-              needles: false,
-            ),
-            child: DecoratedBox(
-              // The same milled edge the full face carries, and the reason a
-              // strip of these lines up. The bottom of an active card is near
-              // black and the backdrop behind it is near black too, so without a
-              // hairline its lower corners simply are not there, while a frozen
-              // card beside it holds a clear pale edge for its whole height. Two
-              // cards the same size read as two different sizes.
-              decoration: BoxDecoration(
-                borderRadius: border,
-                border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+    // Each thumbnail carries a CustomPaint and a drop shadow, and a strip of
+    // them scrolls horizontally. Its own layer means scrolling the strip does not
+    // repaint every face in it.
+    return RepaintBoundary(
+      child: SizedBox(
+        width: width,
+        height: CardFace.heightFor(width),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: border,
+            boxShadow: [
+              BoxShadow(
+                color: Palette.frostInk.withValues(alpha: 0.3),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
               ),
-              child: Padding(
-                padding: EdgeInsets.all(width * 0.1),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Both labels scale with the thumbnail, so under the
-                    // threshold they fall to around five logical pixels and
-                    // become texture rather than text. At that size the card is
-                    // an identity chip, not a data surface, so it carries the
-                    // mark alone. The digits and the kind are on the full face
-                    // and on the card detail screen, which is where a customer
-                    // goes to read them.
-                    if (_showsLabels) ...[
-                      Text(
-                        card.last4,
-                        style: AppType.numericSmall.copyWith(
-                          color: Palette.frostInk.withValues(alpha: 0.72),
-                          fontSize: width * 0.11,
-                          letterSpacing: 0.6,
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: border,
+            // Not animated, and no crystals. A strip of these can be on screen at
+            // once, and the freeze is already told on the full face; paying for it
+            // again on a 96 pixel thumbnail is not worth the frames.
+            child: CustomPaint(
+              painter: _CardFacePainter(
+                sheen: 0,
+                frost: card.status == CardStatus.frozen ? 1 : 0,
+                radius: AppRadius.sm,
+                colourway: colourwayFor(card.id),
+                needles: false,
+              ),
+              child: DecoratedBox(
+                // The same milled edge the full face carries, and the reason a
+                // strip of these lines up. The bottom of an active card is near
+                // black and the backdrop behind it is near black too, so without a
+                // hairline its lower corners simply are not there, while a frozen
+                // card beside it holds a clear pale edge for its whole height. Two
+                // cards the same size read as two different sizes.
+                decoration: BoxDecoration(
+                  borderRadius: border,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.14),
+                  ),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.all(width * 0.1),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Both labels scale with the thumbnail, so under the
+                      // threshold they fall to around five logical pixels and
+                      // become texture rather than text. At that size the card is
+                      // an identity chip, not a data surface, so it carries the
+                      // mark alone. The digits and the kind are on the full face
+                      // and on the card detail screen, which is where a customer
+                      // goes to read them.
+                      if (_showsLabels) ...[
+                        Text(
+                          card.last4,
+                          style: AppType.numericSmall.copyWith(
+                            color: Palette.frostInk.withValues(alpha: 0.72),
+                            fontSize: width * 0.11,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                      ],
+                      Expanded(
+                        child: Center(
+                          child: FrostGlyph(
+                            width: width * (_showsLabels ? 0.5 : 0.62),
+                            excludeSemantics: true,
+                          ),
                         ),
                       ),
+                      if (_showsLabels)
+                        Text(
+                          card.kind.label.toUpperCase(),
+                          style: AppType.labelSmall.copyWith(
+                            color: Colors.white.withValues(alpha: 0.86),
+                            fontSize: width * 0.09,
+                          ),
+                        ),
                     ],
-                    Expanded(
-                      child: Center(
-                        child: FrostGlyph(
-                          width: width * (_showsLabels ? 0.5 : 0.62),
-                          excludeSemantics: true,
-                        ),
-                      ),
-                    ),
-                    if (_showsLabels)
-                      Text(
-                        card.kind.label.toUpperCase(),
-                        style: AppType.labelSmall.copyWith(
-                          color: Colors.white.withValues(alpha: 0.86),
-                          fontSize: width * 0.09,
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
               ),
             ),

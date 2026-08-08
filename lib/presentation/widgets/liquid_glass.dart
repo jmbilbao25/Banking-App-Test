@@ -127,9 +127,14 @@ class _Refraction extends StatelessWidget {
     child: FractionallySizedBox(
       widthFactor: 1 / glass.lensX,
       heightFactor: 1 / glass.lensY,
-      child: BackdropFilter(
-        filter: glass.filter,
-        child: const SizedBox.expand(),
+      // A blur is the most expensive operation on this screen, and without its
+      // own layer it is re-rasterised whenever anything in the enclosing repaint
+      // region changes. The boundary confines that cost to the pane itself.
+      child: RepaintBoundary(
+        child: BackdropFilter(
+          filter: glass.filter,
+          child: const SizedBox.expand(),
+        ),
       ),
     ),
   );
