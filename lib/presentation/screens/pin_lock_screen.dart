@@ -361,7 +361,10 @@ class _PinLockScreenState extends ConsumerState<PinLockScreen> {
                       foregroundColor: Colors.white.withValues(alpha: 0.8),
                     ),
                     icon: const Icon(Icons.swap_horiz_rounded, size: 18),
-                    label: const Text('Switch Account / Use Password'),
+                    // Requirement 25.6 caps this at three words, and 25.8 keeps
+                    // it the mirror of "Use PIN instead" on the login screen so
+                    // one intent does not carry two labels.
+                    label: const Text('Use password instead'),
                   ),
                 ],
               ),

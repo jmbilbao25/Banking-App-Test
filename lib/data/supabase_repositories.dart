@@ -969,7 +969,7 @@ class SupabaseSavingsGoalRepository implements SavingsGoalRepository {
         await _adjustAccountBalance(
           accountId: 'acc_wallet',
           amountChange: current.balance,
-          note: 'Goal closed — funds returned (${current.name})',
+          note: 'Goal closed, funds returned (${current.name})',
           direction: 'inflow',
         );
       }

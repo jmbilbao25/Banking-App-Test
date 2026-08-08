@@ -210,7 +210,7 @@ class _PaymentQrTab extends ConsumerWidget {
               ),
             ),
             icon: const Icon(Icons.qr_code_scanner_rounded),
-            label: const Text('Scan & Pay Now'),
+            label: const Text('Scan and pay'),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: Space.x4),
               backgroundColor: tokens.interactivePrimary,
