@@ -126,7 +126,10 @@ void main() {
         await tester.pumpWidget(_harness(repository));
         await tester.pumpAndSettle();
 
-        expect(find.text('3 unread'), findsOneWidget);
+        // The count is a large GeistMono figure in the brand region now, with
+        // "$n unread" as its spoken label, so the assertion follows the
+        // accessibility contract rather than the glyph.
+        expect(find.bySemanticsLabel('3 unread'), findsOneWidget);
         expect(repository.unreadCount, 3);
         expect(_tintOf(tester, 'ntf_001'), AppTokens.light.interactiveSecondary);
 
@@ -134,8 +137,8 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(repository.unreadCount, 2);
-        expect(find.text('2 unread'), findsOneWidget);
-        expect(find.text('3 unread'), findsNothing);
+        expect(find.bySemanticsLabel('2 unread'), findsOneWidget);
+        expect(find.bySemanticsLabel('3 unread'), findsNothing);
         expect(_tintOf(tester, 'ntf_001'), AppTokens.light.surface);
       },
     );
@@ -154,8 +157,8 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(repository.unreadCount, 0);
-        expect(find.text('No unread alerts'), findsOneWidget);
-        expect(find.text('3 unread'), findsNothing);
+        expect(find.bySemanticsLabel('No unread alerts'), findsOneWidget);
+        expect(find.bySemanticsLabel('3 unread'), findsNothing);
 
         // Every seeded row now carries the read tint, so the write reached all
         // of them and not only the one that was tapped.

@@ -150,6 +150,12 @@ abstract final class NotificationSeed {
             'was not you.',
         category: NotificationCategory.security,
         at: reference.subtract(const Duration(minutes: 42)),
+        // The body tells the customer to review the session, so the row has to
+        // offer a way to do it. This was the only alert in the seed that asked
+        // for an action and then carried no target, which a design review
+        // called out as the security row being the one you cannot act on.
+        // Profile holds the security section that lists devices.
+        linkTarget: '/profile',
       ),
 
       // Mock data: daily interest credited to a goal save.

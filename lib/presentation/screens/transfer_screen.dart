@@ -273,6 +273,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       onPressed: _canReview(source)
           ? () => setState(() => _step = _Step.review)
           : null,
+      hint: 'Add who you are paying and how much to continue.',
     ),
   ];
 

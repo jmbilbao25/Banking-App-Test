@@ -65,7 +65,7 @@ void main() {
     await tester.pumpWidget(_harness(const DashboardScreen()));
     await tester.pumpAndSettle();
 
-    for (final label in ['DEPOSIT', 'SEND', 'SCAN', 'HISTORY']) {
+    for (final label in ['Add money', 'Send money', 'Scan', 'History']) {
       expect(find.text(label), findsOneWidget);
     }
     for (final label in ['Savings', 'Crypto', 'Split Bills', 'Time Deposit']) {

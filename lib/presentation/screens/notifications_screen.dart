@@ -72,9 +72,11 @@ class NotificationsScreen extends ConsumerWidget {
     // which wraps its title in Semantics(header: true).
     return BrandScreenScaffold(
       title: 'Notifications',
-      subtitle: unread == 0
-          ? 'You are up to date on payments, cards and savings.'
-          : 'You have $unread alert${unread == 1 ? '' : 's'} to catch up on.',
+      // The subtitle no longer states the count. It used to, while the sheet
+      // also opened with a "3 unread" label and the dashboard bell carried a
+      // "3" badge: one number, three renderings, three chances to disagree.
+      // The count now lives in one place, the summary card below.
+      subtitle: 'Payments, cards, security and savings, newest first.',
       actions: [
         // Requirement 25.6 caps a label at three words, so this stays an icon
         // control carrying its own name rather than a wide button.
@@ -84,11 +86,14 @@ class NotificationsScreen extends ConsumerWidget {
           onTap: unread == 0 ? () {} : () => _markAllRead(ref),
         ),
       ],
+      // The brand region used to hold nothing but the title and subtitle. With
+      // a floor under it, that left a band of bare gradient exactly where every
+      // sibling screen shows a card, and a design review read it as a card that
+      // had failed to load rather than as a screen that needed no card. The
+      // unread summary moved up here, into the slot the money screens use for
+      // the account, so the header-to-sheet proportion matches across the set.
+      header: rows == null ? null : _UnreadSummary(rows: rows),
       children: [
-        if (rows != null && rows.isNotEmpty) ...[
-          _UnreadSummary(count: unread),
-          const SizedBox(height: Space.x4),
-        ],
         AsyncSection<List<AppNotification>>(
               value: feed,
               onRetry: () => ref.invalidate(notificationsProvider),
@@ -128,24 +133,75 @@ class NotificationsScreen extends ConsumerWidget {
 // Unread summary
 // ---------------------------------------------------------------------------
 
+/// The unread count, in the brand region, built to the same anatomy as the
+/// money screens' [AccountContextCard]: a quiet caption, one large GeistMono
+/// figure, then a supporting row.
+///
+/// Requirement 22.3 asks for the count to drop as rows are read, so the figure
+/// stays a live region and keeps "$count unread" as its spoken label.
 class _UnreadSummary extends StatelessWidget {
-  const _UnreadSummary({required this.count});
+  const _UnreadSummary({required this.rows});
 
-  final int count;
+  final List<AppNotification> rows;
+
+  /// The streams the unread rows come from, in the domain's own words, so the
+  /// supporting line says something the count does not.
+  String get _breakdown {
+    final unread = rows.where((r) => !r.read).toList();
+    if (unread.isEmpty) return 'Nothing waiting on you';
+    final seen = <String>[];
+    for (final row in unread) {
+      final label = row.category.label.toLowerCase();
+      if (!seen.contains(label)) seen.add(label);
+    }
+    if (seen.length == 1) return 'All from ${seen.single}';
+    final last = seen.removeLast();
+    return 'From ${seen.join(', ')} and $last';
+  }
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final label = count == 0 ? 'No unread alerts' : '$count unread';
-    return Semantics(
-      liveRegion: true,
-      child: Row(
+    final onBrand = tokens.textOnBrand;
+    final count = rows.where((r) => !r.read).length;
+    final spoken = count == 0 ? 'No unread alerts' : '$count unread';
+
+    return GlassPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            label,
+            'Unread alerts',
             style: AppType.labelMedium.copyWith(
-              color: count == 0 ? tokens.textSecondary : tokens.accent,
+              color: onBrand.withValues(alpha: 0.76),
             ),
+          ),
+          const SizedBox(height: Space.x2),
+          Semantics(
+            liveRegion: true,
+            label: spoken,
+            excludeSemantics: true,
+            child: Text(
+              '$count',
+              style: AppType.numericLarge.copyWith(color: onBrand),
+            ),
+          ),
+          const SizedBox(height: Space.x3),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _breakdown,
+                  style: AppType.titleSmall.copyWith(color: onBrand),
+                ),
+              ),
+              Text(
+                '${rows.length} total',
+                style: AppType.numericSmall.copyWith(
+                  color: onBrand.withValues(alpha: 0.72),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -308,14 +364,19 @@ class NotificationTile extends StatelessWidget {
     );
   }
 
+  /// One treatment for every category.
+  ///
+  /// This used to map each category onto a semantic token: savings onto
+  /// Success, security onto Warning, payment onto Info. That put the app's
+  /// money colours to work labelling content streams, so green meant "a goal
+  /// grew" here and "interest earned" on Time Deposit, and amber meant
+  /// "security" here and "pending" on the dashboard. A design review flagged
+  /// both collisions. Categories are not states, so they no longer draw from
+  /// the state palette; the category is told by its own word, per requirement
+  /// 22.1, and distinguished at a glance by the glyph shape rather than by
+  /// hue, which also survives a colour vision deficiency.
   static Color _categoryColor(AppTokens tokens, NotificationCategory category) =>
-      switch (category) {
-        NotificationCategory.payment => tokens.info,
-        NotificationCategory.security => tokens.warning,
-        NotificationCategory.savings => tokens.success,
-        NotificationCategory.card => tokens.accent,
-        NotificationCategory.offer => tokens.interactivePrimary,
-      };
+      tokens.accent;
 }
 
 class _CategoryGlyph extends StatelessWidget {
@@ -331,8 +392,11 @@ class _CategoryGlyph extends StatelessWidget {
       width: 44,
       height: 44,
       decoration: BoxDecoration(
+        // A rounded square, matching the funding source icons on Add money and
+        // the lock on Time deposit. Circles here made this the only screen in
+        // the app using a different icon container shape.
         color: color.withValues(alpha: 0.14),
-        borderRadius: AppRadius.all(AppRadius.pill),
+        borderRadius: AppRadius.all(AppRadius.md),
       ),
       // The category is already spoken by the row label and shown by the pill,
       // so the glyph is decorative.

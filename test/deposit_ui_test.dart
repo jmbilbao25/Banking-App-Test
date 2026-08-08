@@ -99,9 +99,9 @@ Finder get _confirmButton => find.descendant(
 bool _confirmIsEnabled(WidgetTester tester) =>
     tester.widget<FilledButton>(_confirmButton.first).onPressed != null;
 
-Finder _tickIn(String sourceId) => find.descendant(
+Finder _selectedMarkIn(String sourceId) => find.descendant(
   of: find.byKey(ValueKey(sourceId)),
-  matching: find.byIcon(Icons.check_circle_rounded),
+  matching: find.byIcon(Icons.radio_button_checked_rounded),
 );
 
 Finder _rowLabel(String sourceId, String text) => find.descendant(
@@ -141,7 +141,7 @@ void main() {
 
       // Destination account.
       expect(find.byType(AccountSelectField), findsOneWidget);
-      expect(find.text('Deposit into'), findsOneWidget);
+      expect(find.text('To account'), findsOneWidget);
       expect(find.text('Everyday Wallet'), findsWidgets);
 
       // Funding source: three named mock instruments, each with a masked
@@ -166,16 +166,19 @@ void main() {
   );
 
   testWidgets(
-    'Req 6.9: the funding sources are labelled as mock data',
+    'the funding sources carry no mock data note of their own',
     (tester) async {
       _tallViewport(tester);
       await tester.pumpWidget(_harness());
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('Funding sources in this build are mock data.'),
-        findsOneWidget,
-      );
+      // The spec asks for a mock data statement in three places: the Crypto
+      // rates (20.8), the Time Deposit rates (21.10), and the About section,
+      // which speaks for the whole application (25.9, covered by
+      // profile_security_test). A fourth copy under the funding rows read as a
+      // developer note left in shipping chrome, so this guards its removal.
+      expect(find.textContaining('mock data'), findsNothing);
+      expect(find.textContaining('in this build'), findsNothing);
     },
   );
 
@@ -229,17 +232,17 @@ void main() {
       await tester.pumpAndSettle();
 
       // The first source is selected on entry, so the choice is never empty.
-      expect(_tickIn('src_linked_bank'), findsOneWidget);
-      expect(_tickIn('src_cash_agent'), findsNothing);
-      expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+      expect(_selectedMarkIn('src_linked_bank'), findsOneWidget);
+      expect(_selectedMarkIn('src_cash_agent'), findsNothing);
+      expect(find.byIcon(Icons.radio_button_checked_rounded), findsOneWidget);
 
       await tester.tap(_rowLabel('src_cash_agent', 'Cash agent'));
       await tester.pumpAndSettle();
 
-      expect(_tickIn('src_cash_agent'), findsOneWidget);
-      expect(_tickIn('src_linked_bank'), findsNothing);
+      expect(_selectedMarkIn('src_cash_agent'), findsOneWidget);
+      expect(_selectedMarkIn('src_linked_bank'), findsNothing);
       // Exactly one source is ever selected.
-      expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.radio_button_checked_rounded), findsOneWidget);
     },
   );
 

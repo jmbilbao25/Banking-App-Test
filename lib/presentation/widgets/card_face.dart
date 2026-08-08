@@ -1203,7 +1203,7 @@ class AddCardTile extends StatelessWidget {
             Icon(Icons.add_rounded, color: ink, size: width * 0.24),
             SizedBox(height: width * 0.06),
             Text(
-              'ADD',
+              'Add',
               style: AppType.labelSmall.copyWith(
                 color: ink,
                 fontSize: width * 0.095,

@@ -498,7 +498,7 @@ class _QRScreenState extends ConsumerState<QRScreen>
         onChanged: (_) => setState(() {}),
       ),
       const SizedBox(height: Space.x5),
-      const SheetFieldLabel('Paid into'),
+      const SheetFieldLabel('To account'),
       AccountSelectField(
         accounts: rows,
         selectedId: receiver.id,
@@ -522,8 +522,11 @@ class _QRScreenState extends ConsumerState<QRScreen>
                 color: tokens.textSecondary,
               ),
               const SizedBox(height: Space.x3),
+              // The instruction lives under the primary action now, with the
+              // rest of the app's disabled-state guidance. This box says what
+              // it is, so the two do not repeat one another.
               Text(
-                'Enter an amount to build your code.',
+                'Your code will appear here.',
                 textAlign: TextAlign.center,
                 style: AppType.bodyMedium.copyWith(color: tokens.textSecondary),
               ),
@@ -568,7 +571,28 @@ class _QRScreenState extends ConsumerState<QRScreen>
           label: 'Payment code payload',
         ),
       ],
+      const SizedBox(height: Space.x6),
+      // Every other task screen ends in one full width action, and this tab
+      // used to end in nothing: the sheet just stopped under the code. A design
+      // review picked it out as the one screen with no way to finish. Copying
+      // the link is the honest action for an offline build, so the label says
+      // what it does rather than promising a share sheet that is not there.
+      PrimaryAction(
+        label: 'Copy payment link',
+        icon: Icons.link_rounded,
+        hint: 'Enter an amount to build your code.',
+        onPressed: payload.isEmpty ? null : () => _copyPayload(payload),
+      ),
     ];
+  }
+
+  Future<void> _copyPayload(String payload) async {
+    await Clipboard.setData(ClipboardData(text: payload));
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.showSnackBar(
+      const SnackBar(content: Text('Payment link copied.')),
+    );
   }
 
   // ---------------------------------------------------------------------------

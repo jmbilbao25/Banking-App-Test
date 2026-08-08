@@ -317,6 +317,7 @@ class PrimaryAction extends StatelessWidget {
     required this.onPressed,
     this.busy = false,
     this.icon,
+    this.hint,
     super.key,
   });
 
@@ -325,46 +326,75 @@ class PrimaryAction extends StatelessWidget {
   final bool busy;
   final IconData? icon;
 
+  /// What the user still has to do before the action is offered.
+  ///
+  /// The money screens keep their primary action disabled until the form is
+  /// valid, because the spec asks for the next step to stay disabled rather
+  /// than to fail on press. On its own that reads as a dead button: a design
+  /// review of the money screens called every one of them "permanently
+  /// disabled" with "nothing to tell the user which field unlocks them". So a
+  /// disabled action now states what is missing, in the same place, on every
+  /// screen. This is guidance and not an error: it is shown for an untouched
+  /// form, where the user has not yet made a mistake, and it sits below the
+  /// button in secondary text rather than in the red [InlineFormError] used
+  /// for something the user actually got wrong.
+  final String? hint;
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return SizedBox(
-      width: double.infinity,
-      height: Layout.minTapTarget + Space.x1,
-      child: FilledButton(
-        onPressed: busy ? null : onPressed,
-        style: FilledButton.styleFrom(
-          backgroundColor: tokens.accent,
-          foregroundColor: tokens.textOnBrand,
-          disabledBackgroundColor: tokens.disabled,
-          disabledForegroundColor: tokens.textSecondary,
-          textStyle: AppType.labelLarge,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.pill),
+    final disabled = onPressed == null && !busy;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          height: Layout.minTapTarget + Space.x1,
+          child: FilledButton(
+            onPressed: busy ? null : onPressed,
+            style: FilledButton.styleFrom(
+              backgroundColor: tokens.accent,
+              foregroundColor: tokens.textOnBrand,
+              disabledBackgroundColor: tokens.disabled,
+              disabledForegroundColor: tokens.textSecondary,
+              textStyle: AppType.labelLarge,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.pill),
+              ),
+            ),
+            child: busy
+                ? SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        tokens.textOnBrand,
+                      ),
+                    ),
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (icon != null) ...[
+                        Icon(icon, size: 18),
+                        const SizedBox(width: Space.x2),
+                      ],
+                      Text(label),
+                    ],
+                  ),
           ),
         ),
-        child: busy
-            ? SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    tokens.textOnBrand,
-                  ),
-                ),
-              )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (icon != null) ...[
-                    Icon(icon, size: 18),
-                    const SizedBox(width: Space.x2),
-                  ],
-                  Text(label),
-                ],
-              ),
-      ),
+        if (disabled && hint != null) ...[
+          const SizedBox(height: Space.x3),
+          Text(
+            hint!,
+            textAlign: TextAlign.center,
+            style: AppType.bodySmall.copyWith(color: tokens.textSecondary),
+          ),
+        ],
+      ],
     );
   }
 }

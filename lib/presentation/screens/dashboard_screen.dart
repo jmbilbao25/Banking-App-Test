@@ -532,29 +532,30 @@ class _QuickActions extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: staggered(
+      // Sentence case, like every other label in the app. These four were the
+      // only all caps text in the product, which made the dashboard read as its
+      // own dialect. "Add money" and "Send money" also now match the titles of
+      // the screens they open, so the label the user taps is the label that
+      // greets them.
       const [
         _QuickAction(
-          // DEPOSIT
           icon: Icons.south_west_rounded,
-          label: 'DEPOSIT',
+          label: 'Add money',
           route: '/deposit',
         ),
         _QuickAction(
-          // TRANSFER
           icon: Icons.north_east_rounded,
-          label: 'SEND',
+          label: 'Send money',
           route: '/transfer',
         ),
         _QuickAction(
-          // QR SCANNING
           icon: Icons.qr_code_scanner_rounded,
-          label: 'SCAN',
+          label: 'Scan',
           route: '/qr-scanner',
         ),
         _QuickAction(
-          // HISTORY
           icon: Icons.receipt_long_rounded,
-          label: 'HISTORY',
+          label: 'History',
           route: '/activity',
         ),
       ],

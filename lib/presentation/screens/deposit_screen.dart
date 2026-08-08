@@ -217,7 +217,6 @@ class _DepositScreenState extends ConsumerState<DepositScreen> {
   }
 
   List<Widget> _form(List<Account> accounts, Account destination) {
-    final tokens = context.tokens;
     final code = ref.watch(preferencesProvider).currencyCode;
     final amount = _enteredAmount;
     final availableHere = Money.convert(
@@ -227,7 +226,11 @@ class _DepositScreenState extends ConsumerState<DepositScreen> {
     );
 
     return [
-      const SheetFieldLabel('Deposit into'),
+      // "To account", not "Deposit into". The same dropdown, holding the same
+      // account, was labelled three different ways across the three money
+      // screens. Source and destination now differ by one word so the pairing
+      // is obvious: Send money reads "From account", this reads "To account".
+      const SheetFieldLabel('To account'),
       AccountSelectField(
         accounts: accounts,
         selectedId: destination.id,
@@ -249,12 +252,12 @@ class _DepositScreenState extends ConsumerState<DepositScreen> {
         ),
         const SizedBox(height: Space.x2),
       ],
-      const SizedBox(height: Space.x1),
-      Text(
-        'Funding sources in this build are mock data.',
-        style: AppType.bodySmall.copyWith(color: tokens.textSecondary),
-      ),
-      const SizedBox(height: Space.x5),
+      // The "these are mock data" note that used to sit here is gone. The spec
+      // asks for that statement in exactly three places: the Crypto rates
+      // (20.8), the Time Deposit rates (21.10), and the About section, which
+      // covers the whole application (25.9). A fourth copy against the funding
+      // rows read as a note to the team left in shipping chrome.
+      const SizedBox(height: Space.x4),
       const SheetFieldLabel('Amount'),
       AmountField(
         controller: _amount,
@@ -291,6 +294,7 @@ class _DepositScreenState extends ConsumerState<DepositScreen> {
         // Requirement 17.3: null while the amount is zero, negative or empty,
         // which renders the control disabled rather than tappable and rejecting.
         onPressed: _amountIsValid ? () => _confirm(destination) : null,
+        hint: 'Enter an amount to continue.',
       ),
     ];
   }
@@ -377,10 +381,13 @@ class _FundingSourceRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: Space.x3),
+              // Radio, not a tick. Exactly one funding source can be chosen,
+              // and a filled checkmark against hollow circles told the user
+              // this was a multi-select list they could add a second row to.
               Icon(
                 selected
-                    ? Icons.check_circle_rounded
-                    : Icons.circle_outlined,
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
                 size: 22,
                 color: selected ? tokens.accent : tokens.border,
               ),
