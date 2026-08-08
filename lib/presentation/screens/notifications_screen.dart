@@ -7,6 +7,8 @@ import '../../core/design/typography.dart';
 import '../../core/format/dates.dart';
 import '../../domain/notification_model.dart';
 import '../../state/providers.dart';
+import '../widgets/brand.dart';
+import '../widgets/brand_scaffold.dart';
 import '../widgets/pressable.dart';
 import '../widgets/states.dart';
 import '../widgets/surfaces.dart';
@@ -65,34 +67,29 @@ class NotificationsScreen extends ConsumerWidget {
     final unread = ref.watch(unreadNotificationCountProvider);
     final rows = feed.hasValue ? feed.requireValue : null;
 
-    return Scaffold(
-      appBar: AppBar(
-        // Requirement 4.7: the screen title is announced as a heading.
-        title: Semantics(header: true, child: const Text('Notifications')),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.done_all_rounded),
-            // Requirement 25.6 caps a label at three words, so the control is an
-            // icon carrying its own semantic label rather than a wide button.
-            tooltip: 'Mark all read',
-            onPressed: unread == 0 ? null : () => _markAllRead(ref),
-          ),
+    // The shared header, so this screen stops being the one with no gradient at
+    // all. Requirement 4.7's heading announcement comes from BrandScreenScaffold,
+    // which wraps its title in Semantics(header: true).
+    return BrandScreenScaffold(
+      title: 'Notifications',
+      subtitle: unread == 0
+          ? 'You are up to date on payments, cards and savings.'
+          : 'You have $unread alert${unread == 1 ? '' : 's'} to catch up on.',
+      actions: [
+        // Requirement 25.6 caps a label at three words, so this stays an icon
+        // control carrying its own name rather than a wide button.
+        GlassIconButton(
+          icon: Icons.done_all_rounded,
+          label: 'Mark all read',
+          onTap: unread == 0 ? () {} : () => _markAllRead(ref),
+        ),
+      ],
+      children: [
+        if (rows != null && rows.isNotEmpty) ...[
+          _UnreadSummary(count: unread),
+          const SizedBox(height: Space.x4),
         ],
-      ),
-      body: ResponsiveShell(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            Space.x5,
-            Space.x3,
-            Space.x5,
-            Space.x16,
-          ),
-          children: [
-            if (rows != null && rows.isNotEmpty) ...[
-              _UnreadSummary(count: unread),
-              const SizedBox(height: Space.x4),
-            ],
-            AsyncSection<List<AppNotification>>(
+        AsyncSection<List<AppNotification>>(
               value: feed,
               onRetry: () => ref.invalidate(notificationsProvider),
               skeleton: const _NotificationSkeleton(),
@@ -122,9 +119,7 @@ class NotificationsScreen extends ConsumerWidget {
                 ],
               ),
             ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }

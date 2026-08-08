@@ -7,6 +7,7 @@ import '../../core/format/money.dart';
 import '../../domain/models.dart';
 import '../../domain/repositories.dart';
 import '../../state/providers.dart';
+import '../widgets/brand_scaffold.dart';
 import '../widgets/money_form.dart';
 import '../widgets/money_text.dart';
 import '../widgets/pressable.dart';
@@ -184,7 +185,7 @@ class _DepositScreenState extends ConsumerState<DepositScreen> {
         ? _resolveDestination(accounts.requireValue)
         : null;
 
-    return MoneyFormScaffold(
+    return BrandScreenScaffold(
       title: 'Add money',
       subtitle: 'Choose where the money lands and how you are funding it.',
       header: destination == null

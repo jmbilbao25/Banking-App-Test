@@ -740,9 +740,9 @@ void main() {
 
       expect(find.byType(EmptyStateView), findsOneWidget);
       expect(find.text('No time deposits yet'), findsOneWidget);
-      expect(find.text('Open a deposit'), findsOneWidget);
+      expect(find.text('New deposit'), findsWidgets);
 
-      await tester.tap(find.text('Open a deposit'));
+      await tester.tap(find.text('New deposit').last);
       await tester.pumpAndSettle();
       expect(find.byType(OpenTimeDepositSheet), findsOneWidget);
     },

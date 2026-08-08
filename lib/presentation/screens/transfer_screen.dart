@@ -8,6 +8,7 @@ import '../../domain/models.dart';
 import '../../domain/repositories.dart';
 import '../../state/providers.dart';
 import '../widgets/app_lock_confirm.dart';
+import '../widgets/brand_scaffold.dart';
 import '../widgets/money_form.dart';
 import '../widgets/money_text.dart';
 import '../widgets/states.dart';
@@ -58,41 +59,38 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
 
   double get _enteredAmount => double.tryParse(_amount.text.trim()) ?? 0;
 
-  /// Validates the details step. Returns true when the review may open.
-  bool _validate(Account source) {
-    final recipient = _recipient.text.trim();
+  double _availableHere(Account source) => Money.convert(
+    source.availableBalance,
+    fromCurrency: source.currencyCode,
+    toCurrency: ref.read(preferencesProvider).currencyCode,
+  );
+
+  /// Whether the review step may open.
+  ///
+  /// Requirements 16.4, 16.6 and 16.7 all say the next step is *kept disabled*,
+  /// not that it complains when pressed. So this is evaluated on every keystroke
+  /// and drives the control's enabled state, which also makes it consistent with
+  /// the deposit screen rather than the two flows disagreeing about whether an
+  /// empty form has a live primary action.
+  bool _canReview(Account source) {
     final amount = _enteredAmount;
+    return _recipient.text.trim().isNotEmpty &&
+        amount > 0 &&
+        amount <= _availableHere(source);
+  }
 
-    final preferences = ref.read(preferencesProvider);
-    final availableHere = Money.convert(
-      source.availableBalance,
-      fromCurrency: source.currencyCode,
-      toCurrency: preferences.currencyCode,
-    );
-
-    String? recipientError;
-    String? amountError;
-
-    // Requirement 16.4: an unresolved recipient blocks the next step.
-    if (recipient.isEmpty) {
-      recipientError = 'Enter who you are sending to.';
-    }
-    // Requirements 16.6 and 16.7.
-    if (amount <= 0) {
-      amountError = 'Enter an amount greater than zero.';
-    } else if (amount > availableHere) {
-      amountError =
-          'That is more than your available balance of '
-          '${Money.format(availableHere, currencyCode: preferences.currencyCode)}.';
-    }
-
-    setState(() {
-      _recipientError = recipientError;
-      _amountError = amountError;
-      _formError = null;
-    });
-
-    return recipientError == null && amountError == null;
+  /// Requirement 16.6 asks for an inline message as well as a disabled control,
+  /// so the customer is told why rather than left guessing at a dead button.
+  /// Only the over balance case earns a message: an empty field has not made a
+  /// mistake yet.
+  String? _amountHint(Account source) {
+    final amount = _enteredAmount;
+    if (amount <= 0) return null;
+    final available = _availableHere(source);
+    if (amount <= available) return null;
+    final code = ref.read(preferencesProvider).currencyCode;
+    return 'That is more than your available balance of '
+        '${Money.format(available, currencyCode: code)}.';
   }
 
   Future<void> _confirm(Account source) async {
@@ -179,7 +177,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
         ? _resolveSource(accounts.requireValue)
         : null;
 
-    return MoneyFormScaffold(
+    return BrandScreenScaffold(
       title: 'Send money',
       subtitle: _step == _Step.details
           ? 'Choose an account, then say who you are paying.'
@@ -240,18 +238,20 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       hint: 'Name, account number or mobile',
       errorText: _recipientError,
       textInputAction: TextInputAction.next,
-      onChanged: (_) {
-        if (_recipientError != null) setState(() => _recipientError = null);
-      },
+      onChanged: (_) => setState(() {
+        _recipientError = null;
+        _formError = null;
+      }),
     ),
     const SizedBox(height: Space.x5),
     const SheetFieldLabel('Amount'),
     AmountField(
       controller: _amount,
-      errorText: _amountError,
-      onChanged: (_) {
-        if (_amountError != null) setState(() => _amountError = null);
-      },
+      errorText: _amountError ?? _amountHint(source),
+      onChanged: (_) => setState(() {
+        _amountError = null;
+        _formError = null;
+      }),
     ),
     const SizedBox(height: Space.x5),
     const SheetFieldLabel('Note', optional: true),
@@ -269,9 +269,10 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     PrimaryAction(
       label: 'Review',
       icon: Icons.arrow_forward_rounded,
-      onPressed: () {
-        if (_validate(source)) setState(() => _step = _Step.review);
-      },
+      // Disabled, not validate on press, per requirements 16.4, 16.6 and 16.7.
+      onPressed: _canReview(source)
+          ? () => setState(() => _step = _Step.review)
+          : null,
     ),
   ];
 

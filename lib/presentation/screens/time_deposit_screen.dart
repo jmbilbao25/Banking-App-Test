@@ -8,6 +8,7 @@ import '../../core/format/money.dart';
 import '../../domain/time_deposit_model.dart';
 import '../../state/providers.dart';
 import '../widgets/brand.dart';
+import '../widgets/brand_scaffold.dart';
 import '../widgets/money_text.dart';
 import '../widgets/pressable.dart';
 import '../widgets/states.dart';
@@ -29,87 +30,123 @@ class TimeDepositScreen extends ConsumerWidget {
     final totalPrincipal = ref.watch(timeDepositTotalPrincipalProvider);
     final now = ref.watch(timeDepositClockProvider)();
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Time Deposit')),
-      body: ResponsiveShell(
-        child: Stack(
-          children: [
-            ListView(
-              padding: const EdgeInsets.fromLTRB(0, 0, 0, Space.x16 + Space.x8),
-              children: [
-                _TimeDepositHeroCard(totalPrincipal: totalPrincipal),
-                const SizedBox(height: Space.x6),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: Space.x5),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SectionHeader(
-                        title: 'Placed deposits',
-                        action: TextButton.icon(
-                          onPressed: () => openTimeDepositFlow(context),
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('New deposit'),
-                        ),
-                      ),
-
-                      // Req 3.1, 3.3, 3.4: one async surface with a shape
-                      // matched skeleton, an empty state, and inline retry.
-                      AsyncSection<List<TimeDeposit>>(
-                        value: deposits,
-                        onRetry: () {
-                          ref.invalidate(timeDepositsProvider);
-                          ref.invalidate(timeDepositTotalPrincipalProvider);
-                        },
-                        skeleton: const _DepositSkeleton(),
-                        isEmpty: (rows) => rows.isEmpty,
-                        empty: EmptyStateView(
-                          icon: Icons.lock_clock_rounded,
-                          heading: 'No time deposits yet',
-                          message:
-                              'Lock a principal for a fixed term and collect '
-                              'the interest at maturity.',
-                          actionLabel: 'Open a deposit',
-                          onAction: () => openTimeDepositFlow(context),
-                        ),
-                        builder: (rows) => Column(
-                          children: [
-                            for (final deposit in rows)
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  bottom: Space.x3,
-                                ),
-                                child: _DepositCard(deposit: deposit, now: now),
-                              ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: Space.x4),
-                      const _MockRateNotice(),
-                    ],
-                  ),
+    // The same header every other screen uses. This screen previously had a
+    // plain AppBar plus a full bleed square cornered gradient slab below it,
+    // which turned the brand gradient from chrome into a component and made the
+    // screen read as a different product on a contact sheet. The total principal
+    // is now the standard inset hero card inside the brand region.
+    //
+    // The floating "Open deposit" button is gone. It overlapped the second
+    // deposit card, hiding its maturity date and interest and clipping the days
+    // remaining line, and it was a second label for the intent the header's
+    // "New deposit" already carries, which requirement 25.8 forbids.
+    return BrandScreenScaffold(
+      title: 'Time deposit',
+      subtitle: 'Lock a principal for a fixed term and collect the interest.',
+      header: _TotalPrincipalCard(totalPrincipal: totalPrincipal),
+      children: [
+        SectionHeader(
+          title: 'Placed deposits',
+          // Hidden while the list is empty, because the empty state already
+          // offers this exact action. Two identical controls on one screen is the
+          // same problem as two labels for one intent, seen from the other side.
+          action: (!deposits.hasValue || deposits.requireValue.isEmpty)
+              ? null
+              : TextButton.icon(
+                  onPressed: () => openTimeDepositFlow(context),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('New deposit'),
                 ),
-              ],
-            ),
-            Positioned(
-              bottom: Space.x5,
-              left: 0,
-              right: 0,
-              child: Align(
-                alignment: Alignment.bottomRight,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: Space.x5),
-                  child: FloatingActionButton.extended(
-                    onPressed: () => openTimeDepositFlow(context),
-                    icon: const Icon(Icons.lock_clock_rounded),
-                    label: const Text('Open deposit'),
-                  ),
-                ),
-              ),
-            ),
-          ],
         ),
+
+        // Req 3.1, 3.3, 3.4: one async surface with a shape matched skeleton, an
+        // empty state, and inline retry.
+        AsyncSection<List<TimeDeposit>>(
+          value: deposits,
+          onRetry: () {
+            ref.invalidate(timeDepositsProvider);
+            ref.invalidate(timeDepositTotalPrincipalProvider);
+          },
+          skeleton: const _DepositSkeleton(),
+          isEmpty: (rows) => rows.isEmpty,
+          empty: EmptyStateView(
+            icon: Icons.lock_clock_rounded,
+            heading: 'No time deposits yet',
+            message:
+                'Lock a principal for a fixed term and collect the interest at '
+                'maturity.',
+            actionLabel: 'New deposit',
+            onAction: () => openTimeDepositFlow(context),
+          ),
+          builder: (rows) => Column(
+            children: [
+              for (final deposit in rows)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Space.x3),
+                  child: _DepositCard(deposit: deposit, now: now),
+                ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: Space.x4),
+        const _MockRateNotice(),
+      ],
+    );
+  }
+}
+
+/// Total principal placed, as the inset hero card the money screens use for the
+/// account balance, so the same role reads at the same size across the app.
+class _TotalPrincipalCard extends StatelessWidget {
+  const _TotalPrincipalCard({required this.totalPrincipal});
+
+  final AsyncValue<double> totalPrincipal;
+
+  @override
+  Widget build(BuildContext context) {
+    final onBrand = context.tokens.textOnBrand;
+    return GlassPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Total principal placed',
+            style: AppType.labelMedium.copyWith(
+              color: onBrand.withValues(alpha: 0.76),
+            ),
+          ),
+          const SizedBox(height: Space.x2),
+          totalPrincipal.when(
+            loading: () => const SkeletonBlock(
+              width: 180,
+              height: 36,
+              radius: AppRadius.sm,
+            ),
+            error: (_, _) => Text(
+              Money.maskGlyphs,
+              style: AppType.numericHero.copyWith(color: onBrand),
+            ),
+            // numericHero, matching the dashboard balance, because this figure is
+            // the subject of its screen. The money screens use numericLarge for
+            // their account card because there the balance is context for a
+            // transfer rather than the thing being looked at. Two roles, two
+            // steps, applied consistently, rather than one role at three sizes.
+            data: (amount) => MoneyText(
+              amount,
+              style: AppType.numericHero,
+              color: onBrand,
+              label: 'Total principal placed',
+            ),
+          ),
+          const SizedBox(height: Space.x3),
+          Text(
+            TimeDepositRates.mockRateStatement,
+            style: AppType.bodySmall.copyWith(
+              color: onBrand.withValues(alpha: 0.72),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -125,78 +162,6 @@ Future<void> openTimeDepositFlow(BuildContext context) =>
       backgroundColor: Colors.transparent,
       builder: (_) => const OpenTimeDepositSheet(),
     ).then((_) {});
-
-// ---------------------------------------------------------------------------
-// Hero: total principal (Req 21.2)
-// ---------------------------------------------------------------------------
-
-class _TimeDepositHeroCard extends StatelessWidget {
-  const _TimeDepositHeroCard({required this.totalPrincipal});
-
-  final AsyncValue<double> totalPrincipal;
-
-  @override
-  Widget build(BuildContext context) {
-    // The hero sits on the brand backdrop, so every figure and label here
-    // resolves through the on brand token rather than a literal white.
-    final onBrand = context.tokens.textOnBrand;
-    return FrostBackdrop(
-      borderRadius: const BorderRadius.vertical(
-        bottom: Radius.circular(AppRadius.xl),
-      ),
-      glow: 0.34,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          Space.x5,
-          Space.x5,
-          Space.x5,
-          Space.x7,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Total principal placed',
-              style: AppType.labelMedium.copyWith(
-                color: onBrand.withValues(alpha: 0.76),
-              ),
-            ),
-            const SizedBox(height: Space.x2),
-            totalPrincipal.when(
-              loading: () => const SkeletonBlock(
-                width: 180,
-                height: 36,
-                radius: AppRadius.sm,
-              ),
-              error: (_, _) => Text(
-                Money.maskGlyphs,
-                style: AppType.numericHero.copyWith(color: onBrand),
-              ),
-              // Req 21.2: one large GeistMono figure.
-              data: (amount) => MoneyText(
-                amount,
-                style: AppType.numericHero,
-                color: onBrand,
-                label: 'Total principal placed',
-              ),
-            ),
-            const SizedBox(height: Space.x4),
-            Text(
-              TimeDepositRates.mockRateStatement,
-              style: AppType.bodySmall.copyWith(
-                color: onBrand.withValues(alpha: 0.72),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// One deposit (Req 21.1, 21.7)
-// ---------------------------------------------------------------------------
 
 class _DepositCard extends StatelessWidget {
   const _DepositCard({required this.deposit, required this.now});

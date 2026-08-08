@@ -12,6 +12,7 @@ import '../../state/providers.dart';
 import '../widgets/app_lock_confirm.dart';
 import '../widgets/brand.dart';
 import '../widgets/camera_permission.dart';
+import '../widgets/brand_scaffold.dart';
 import '../widgets/money_form.dart';
 import '../widgets/money_text.dart';
 import '../widgets/qr_painter.dart';
@@ -29,7 +30,7 @@ import 'transaction_history_screen.dart' show txnPagingProvider;
 /// never told the customer who they were paying.
 ///
 /// This rebuild carries the same vocabulary as Transfer and Deposit:
-/// [MoneyFormScaffold] for the brand region and the content sheet, [SheetField]
+/// [BrandScreenScaffold] for the brand region and the content sheet, [SheetField]
 /// and [AmountField] for input, [AccountSelectField] for the account, and
 /// [MoneyReviewRow] plus [MoneyOutcomeSheet] for the confirmation and the
 /// receipt. Requirement 17.7 still gates the debit behind App_Lock, and
@@ -410,7 +411,7 @@ class _QRScreenState extends ConsumerState<QRScreen>
         ? null
         : (_onPayTab ? _resolveSource(rows) : _resolveReceiver(rows));
 
-    return MoneyFormScaffold(
+    return BrandScreenScaffold(
       title: 'QR payments',
       subtitle: _subtitle,
       header: headerAccount == null

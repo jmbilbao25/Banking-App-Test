@@ -150,7 +150,7 @@ void main() {
 
         expect(repository.unreadCount, 3);
 
-        await tester.tap(find.byTooltip('Mark all read'));
+        await tester.tap(find.bySemanticsLabel('Mark all read'));
         await tester.pumpAndSettle();
 
         expect(repository.unreadCount, 0);
