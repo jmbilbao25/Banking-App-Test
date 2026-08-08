@@ -140,11 +140,14 @@ class _TotalPrincipalCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: Space.x3),
+          // The slot the money screens use for the account and its masked
+          // number. The mock rate disclaimer used to sit here, which made this
+          // card the odd one out and gave the same class of disclaimer a third
+          // placement across the app. It now sits with the other one, below the
+          // content, where Add money puts its funding source note.
           Text(
-            TimeDepositRates.mockRateStatement,
-            style: AppType.bodySmall.copyWith(
-              color: onBrand.withValues(alpha: 0.72),
-            ),
+            'Across every active deposit',
+            style: AppType.titleSmall.copyWith(color: onBrand),
           ),
         ],
       ),

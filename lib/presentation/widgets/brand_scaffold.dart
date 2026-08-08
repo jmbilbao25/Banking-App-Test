@@ -50,6 +50,10 @@ class BrandScreenScaffold extends StatelessWidget {
   /// one screen and the next.
   static const double pageInset = Space.x5;
 
+  /// Floor for the brand region. Chosen so a header-less screen still shows a
+  /// substantial gradient band rather than a stripe.
+  static const double _minBrandHeight = 196;
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
@@ -62,47 +66,61 @@ class BrandScreenScaffold extends StatelessWidget {
         FrostBackdrop(
           child: SafeArea(
             bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                pageInset,
-                Space.x2,
-                pageInset,
-                Space.x10,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const _BackControl(),
-                      Expanded(
-                        child: Semantics(
-                          header: true,
-                          child: Text(
-                            title,
-                            style: AppType.headlineMedium.copyWith(
-                              color: tokens.textOnBrand,
+            child: ConstrainedBox(
+              // A floor on the brand region, so a screen with no header body
+              // does not haul the sheet seam up to where its siblings are still
+              // showing gradient. The header to sheet proportion is what makes
+              // six screens read as one template.
+              constraints: const BoxConstraints(minHeight: _minBrandHeight),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  pageInset,
+                  Space.x2,
+                  pageInset,
+                  Space.x10,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Fixed height, so the title lands on the same baseline on
+                    // every screen. Without it the row grew to fit whichever
+                    // controls it held, and a screen with a trailing action set
+                    // its title visibly lower than a screen without one.
+                    SizedBox(
+                      height: Layout.minTapTarget,
+                      child: Row(
+                        children: [
+                          const _BackControl(),
+                          Expanded(
+                            child: Semantics(
+                              header: true,
+                              child: Text(
+                                title,
+                                style: AppType.headlineMedium.copyWith(
+                                  color: tokens.textOnBrand,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                      ...actions,
-                    ],
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: Space.x2),
-                    Text(
-                      subtitle!,
-                      style: AppType.bodySmall.copyWith(
-                        color: tokens.textOnBrand.withValues(alpha: 0.76),
+                          ...actions,
+                        ],
                       ),
                     ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: Space.x2),
+                      Text(
+                        subtitle!,
+                        style: AppType.bodySmall.copyWith(
+                          color: tokens.textOnBrand.withValues(alpha: 0.76),
+                        ),
+                      ),
+                    ],
+                    if (header != null) ...[
+                      const SizedBox(height: Space.x5),
+                      header!,
+                    ],
                   ],
-                  if (header != null) ...[
-                    const SizedBox(height: Space.x5),
-                    header!,
-                  ],
-                ],
+                ),
               ),
             ),
           ),
