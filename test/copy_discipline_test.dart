@@ -146,14 +146,23 @@ void main() {
     // both, so the palette is the only place allowed to name a colour.
     final hex = RegExp(r'0x[fF][fF][0-9a-fA-F]{6}');
     final allowed = {
-      // The palette is where colour is allowed to be named.
+      // The design system is where colour is allowed to be named. glass.dart
+      // defines the glass materials themselves, in the same sense tokens.dart
+      // defines the palette.
       'lib/core/design/tokens.dart',
       'lib/core/design/theme.dart',
+      'lib/core/design/glass.dart',
       // Third party brand marks. A Mastercard circle has to be Mastercard red
       // and Bitcoin orange has to be Bitcoin orange, so a semantic token cannot
       // stand in for either without misrepresenting the mark.
       'lib/presentation/widgets/card_face.dart',
       'lib/presentation/widgets/market.dart',
+      // A QR symbol has to hold printed contrast to stay machine readable, so
+      // its plate and modules cannot follow the theme.
+      'lib/presentation/widgets/qr_painter.dart',
+      // Off domain and unreachable, pending a decision on whether it ships. Not
+      // worth migrating a screen that is a candidate for deletion.
+      'lib/presentation/screens/netkeiba_race_screen.dart',
     };
     final offenders = <String>[];
 
@@ -169,24 +178,65 @@ void main() {
       }
     }
 
-    // Recorded rather than asserted at zero: the screens listed here predate the
-    // rule and are being migrated. The count must never grow.
+    // Asserted at zero rather than ratcheted. Every screen now reads its colour
+    // from the token set, so a hex literal outside the allowed files above is a
+    // regression rather than debt.
     expect(
-      offenders.length,
-      lessThanOrEqualTo(_knownRawHexCount),
+      offenders,
+      isEmpty,
       reason:
-          'A new raw hex colour was added. Read it from context.tokens '
-          'instead.\n${offenders.join('\n')}',
+          'Read the colour from context.tokens instead of naming it. If it '
+          'genuinely cannot follow the theme, say why and add the file to the '
+          'allowed set.\n${offenders.join('\n')}',
+    );
+  });
+
+  test('Req 1.8: every MoneyText style comes from the AppType scale', () {
+    // MoneyText resolves `(style ?? numericMedium).copyWith(color: color ?? tokens.textPrimary)`,
+    // so a raw TextStyle passed as `style` loses GeistMono, and any colour set
+    // inside it is silently discarded in favour of the text token. That is
+    // exactly how the transfer screen ended up rendering a near-black available
+    // balance on a dark blue gradient: invisible, and in the wrong typeface.
+    //
+    // Requiring the style to be an AppType step closes both halves at once, and
+    // pushes the colour to the `color:` parameter where it is actually honoured.
+    final call = RegExp(r'MoneyText\(');
+    final offenders = <String>[];
+
+    for (final file in dartFiles) {
+      final text = file.readAsStringSync();
+      for (final match in call.allMatches(text)) {
+        // The argument list, bounded by the matching close paren.
+        var depth = 0;
+        var end = match.end;
+        for (var i = match.end - 1; i < text.length; i++) {
+          if (text[i] == '(') depth++;
+          if (text[i] == ')') {
+            depth--;
+            if (depth == 0) {
+              end = i;
+              break;
+            }
+          }
+        }
+        final args = text.substring(match.end, end);
+        if (!args.contains('style:')) continue;
+        final styleAt = args.indexOf('style:');
+        final styleArg = args.substring(styleAt, args.length.clamp(0, styleAt + 90));
+        if (!styleArg.contains('AppType.')) {
+          final line = text.substring(0, match.start).split('\n').length;
+          offenders.add('${file.path}:$line');
+        }
+      }
+    }
+
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'Pass an AppType numeric step as MoneyText style, and set the colour '
+          'with the color parameter. A raw TextStyle loses GeistMono and its '
+          'colour is discarded.\n${offenders.join('\n')}',
     );
   });
 }
-
-/// Raw hex colour sites still awaiting migration onto the token set.
-///
-/// A ratchet rather than a clean assertion, because these predate the rule and
-/// clearing all of them is a separate change. The point is that the number can
-/// only go down: a new hex literal fails this test. The concentrations are
-/// opening_ad_screen.dart, qr_screen.dart, transfer_screen.dart and
-/// deposit_screen.dart, which are the screens that were written against literal
-/// colours rather than against the theme.
-const _knownRawHexCount = 55;

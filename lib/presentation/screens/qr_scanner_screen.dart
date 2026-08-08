@@ -307,7 +307,10 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
     final overlayBg = isDark
         ? Colors.black.withValues(alpha: 0.55)
         : Colors.black.withValues(alpha: 0.45);
-    final bracketColor = isDark ? const Color(0xFF6A5CFF) : const Color(0xFF6A5CFF);
+    // Both branches of the previous ternary were the same literal, which was the
+    // accent token spelled by hand. The viewport is dark in either theme, so the
+    // bracket reads from the dark token set.
+    final bracketColor = AppTokens.dark.accent;
     final labelBg = Colors.black.withValues(alpha: 0.65);
 
     return Scaffold(

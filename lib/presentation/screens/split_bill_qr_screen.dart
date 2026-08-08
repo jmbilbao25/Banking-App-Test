@@ -180,7 +180,9 @@ class _PaymentQrTab extends ConsumerWidget {
                     size: 220,
                     // White bg always — needed for scanner contrast.
                     backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF0F1123),
+                    // The QR card is white in both themes, so its control reads the
+                    // light token set rather than the active one.
+                    foregroundColor: AppTokens.light.textPrimary,
                   ),
 
                   const SizedBox(height: Space.x6),
@@ -304,7 +306,9 @@ class _JoinQrTab extends StatelessWidget {
                     data: payload,
                     size: 220,
                     backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF0F1123),
+                    // The QR card is white in both themes, so its control reads the
+                    // light token set rather than the active one.
+                    foregroundColor: AppTokens.light.textPrimary,
                   ),
 
                   const SizedBox(height: Space.x6),

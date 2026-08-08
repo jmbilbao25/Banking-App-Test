@@ -138,6 +138,13 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       ref.invalidate(txnPagingProvider);
       if (!mounted) return;
 
+      // Cleared before the receipt opens. A busy PrimaryAction spins an
+      // indicator, which never settles, so leaving it busy behind a modal sheet
+      // means the screen holds a permanent animation and pumpAndSettle can never
+      // return. The sheet is not dismissible except by its own control, so a
+      // second submission is still impossible.
+      setState(() => _submitting = false);
+
       await MoneyOutcomeSheet.show(
         context,
         succeeded: true,

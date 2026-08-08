@@ -265,7 +265,7 @@ class _CapsulePainter extends CustomPainter {
     if (faded) {
       canvas.saveLayer(
         null,
-        Paint()..color = const Color(0xFF000000).withValues(alpha: opacity),
+        Paint()..color = Colors.black.withValues(alpha: opacity),
       );
     }
 
