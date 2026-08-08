@@ -374,6 +374,21 @@ class MockDataSource {
         return List<Txn>.unmodifiable(rows);
       });
 
+  /// One page of the list, for requirement 15.10. A short page means the end has
+  /// been reached, so the caller needs no separate total.
+  Future<List<Txn>> transactionPage({
+    String? accountId,
+    required int offset,
+    required int limit,
+  }) => read('transactions', () {
+    final rows = accountId == null
+        ? _transactions
+        : _transactions.where((txn) => txn.accountId == accountId).toList();
+    if (offset >= rows.length) return const <Txn>[];
+    final end = (offset + limit).clamp(0, rows.length);
+    return List<Txn>.unmodifiable(rows.sublist(offset, end));
+  });
+
   Future<Txn> transaction(String id) => read('transactions', () {
     final match = _transactions.where((txn) => txn.id == id).firstOrNull;
     if (match == null) {

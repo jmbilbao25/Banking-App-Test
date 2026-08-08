@@ -563,6 +563,38 @@ class SupabaseTransactionRepository implements TransactionRepository {
     }
   }
 
+  /// Requirement 15.10, pushed down to the query with `range` so a long history
+  /// is never fetched whole just to show twenty rows.
+  @override
+  Future<List<Txn>> fetchTransactionPage({
+    String? accountId,
+    required int offset,
+    required int limit,
+  }) async {
+    try {
+      final user = _client.auth.currentUser;
+      if (user == null) throw const RepositoryFailure('User not authenticated');
+      var query = _client.from('transactions').select();
+      if (accountId != null) {
+        query = query.eq('account_id', accountId);
+      } else {
+        query = query.eq('user_id', user.id);
+      }
+      final response = await query
+          .order('date', ascending: false)
+          .range(offset, offset + limit - 1);
+      return (response as List)
+          .map(
+            (item) => SupabaseMappers.transactionFromMap(
+              item as Map<String, dynamic>,
+            ),
+          )
+          .toList();
+    } catch (e) {
+      throw RepositoryFailure('Could not load transactions from Supabase: $e');
+    }
+  }
+
   @override
   Future<Txn> fetchTransaction(String id) async {
     try {
