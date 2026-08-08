@@ -189,4 +189,4 @@ void main() {
 /// opening_ad_screen.dart, qr_screen.dart, transfer_screen.dart and
 /// deposit_screen.dart, which are the screens that were written against literal
 /// colours rather than against the theme.
-const _knownRawHexCount = 62;
+const _knownRawHexCount = 55;
