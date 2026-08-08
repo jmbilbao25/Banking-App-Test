@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/design/tokens.dart';
 import '../../core/format/money.dart';
 import '../../domain/models.dart';
-import '../../domain/repositories.dart';
 import '../../state/providers.dart';
 import '../widgets/money_text.dart';
 
@@ -144,7 +143,9 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
 
     final inputDecoration = InputDecoration(
       filled: true,
-      fillColor: isDark ? Colors.white.withOpacity(0.08) : Colors.grey.shade100,
+      fillColor: isDark
+          ? Colors.white.withValues(alpha: 0.08)
+          : Colors.grey.shade100,
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(30),
@@ -187,7 +188,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                 Text('From Account', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: _selectedSourceAccountId,
+                  initialValue: _selectedSourceAccountId,
                   decoration: inputDecoration,
                   dropdownColor: isDark ? const Color(0xFF1E1E32) : Colors.white,
                   items: accounts.map((a) {
@@ -215,7 +216,13 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 4))],
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.15),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

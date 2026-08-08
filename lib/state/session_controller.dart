@@ -29,6 +29,11 @@ class SessionSignedIn extends SessionState {
 
 /// Owns sign in, sign out, and session restore.
 class SessionController extends Notifier<SessionState> {
+  /// A restore that has not answered inside this window is treated as a failed
+  /// restore. Requirement 8.5 caps the splash at 2000ms, so the decision has to
+  /// be made before that cap rather than waiting on an unreachable backend.
+  static const restoreTimeout = Duration(milliseconds: 1500);
+
   @override
   SessionState build() => const SessionUnknown();
 
@@ -42,10 +47,11 @@ class SessionController extends Notifier<SessionState> {
     ref.invalidate(selectedAccountIdProvider);
   }
 
-  /// Called once by the splash screen.
+  /// Called once by the splash screen. Always settles on a terminal state, so
+  /// the router guard can never hold the application on the splash.
   Future<void> restore() async {
     try {
-      final profile = await _auth.restoreSession();
+      final profile = await _auth.restoreSession().timeout(restoreTimeout);
       state = profile == null
           ? const SessionSignedOut()
           : SessionSignedIn(profile);

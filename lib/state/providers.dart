@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../core/config/api_config.dart';
 import '../core/supabase_config.dart';
 import '../data/mock_data_source.dart';
+import '../data/mock_market_repository.dart';
 import '../data/mock_repositories.dart';
 import '../domain/models.dart';
 import '../data/mock_seed.dart';
@@ -103,12 +105,23 @@ final httpClientProvider = Provider<http.Client>((ref) {
   return client;
 });
 
-/// Live market data. Unlike the repositories above, this one has no mock
-/// counterpart: it is always the real service, because a made up price on a
-/// screen labelled live would be a lie.
-final marketRepositoryProvider = Provider<MarketRepository>(
-  (ref) => TwelveDataMarketRepository(client: ref.watch(httpClientProvider)),
+/// True when no market data key was supplied at build time, so every rate on
+/// screen is generated locally. The crypto surface reads this to state that its
+/// rates are mock data, per requirement 19.8. A made up price on a screen
+/// labelled live would be a lie, so the label follows the source.
+final marketDataIsMockProvider = Provider<bool>(
+  (ref) => !ApiConfig.hasTwelveDataKey,
 );
+
+/// Market data. Requirement 5.9 forbids shipping an API key, so a build without
+/// the define falls back to locally generated bars rather than failing every
+/// crypto read.
+final marketRepositoryProvider = Provider<MarketRepository>((ref) {
+  if (ref.watch(marketDataIsMockProvider)) {
+    return MockMarketRepository();
+  }
+  return TwelveDataMarketRepository(client: ref.watch(httpClientProvider));
+});
 
 /// Application state.
 final sessionProvider = NotifierProvider<SessionController, SessionState>(

@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/design/tokens.dart';
 import '../../core/format/money.dart';
 import '../../domain/models.dart';
-import '../../domain/repositories.dart';
 import '../../state/providers.dart';
 
 class DepositScreen extends ConsumerStatefulWidget {
@@ -131,7 +130,9 @@ class _DepositScreenState extends ConsumerState<DepositScreen> {
     // Themed Input Decoration
     final inputDecoration = InputDecoration(
       filled: true,
-      fillColor: isDark ? Colors.white.withOpacity(0.08) : Colors.grey.shade100,
+      fillColor: isDark
+          ? Colors.white.withValues(alpha: 0.08)
+          : Colors.grey.shade100,
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(30),
@@ -174,7 +175,7 @@ class _DepositScreenState extends ConsumerState<DepositScreen> {
                 Text('Select Destination Account', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: _selectedAccountId,
+                  initialValue: _selectedAccountId,
                   decoration: inputDecoration,
                   dropdownColor: isDark ? const Color(0xFF1E1E32) : Colors.white,
                   items: accounts.map((a) {

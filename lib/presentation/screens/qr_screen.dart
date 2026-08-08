@@ -2,13 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:mobile_scanner/mobile_scanner.dart'; 
-import '../../core/design/tokens.dart';
-import '../../core/format/money.dart';
-import '../../domain/models.dart'; 
-import '../../domain/repositories.dart'; 
-import '../../state/providers.dart'; 
-import '../widgets/money_text.dart'; 
+import 'package:mobile_scanner/mobile_scanner.dart';
+import '../../domain/models.dart';
+import '../../state/providers.dart';
 
 class QRScreen extends ConsumerStatefulWidget {
   const QRScreen({super.key});
@@ -98,11 +94,13 @@ class _QRScreenState extends ConsumerState<QRScreen> with SingleTickerProviderSt
                 Text('Select source of funds:', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black)),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<Account>(
-                  value: selectedAccount,
+                  initialValue: selectedAccount,
                   dropdownColor: isDark ? const Color(0xFF1E1E32) : Colors.white,
                   decoration: InputDecoration(
                     filled: true,
-                    fillColor: isDark ? Colors.white.withOpacity(0.08) : Colors.grey.shade100,
+                    fillColor: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.grey.shade100,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -130,7 +128,13 @@ class _QRScreenState extends ConsumerState<QRScreen> with SingleTickerProviderSt
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(16),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))],
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -202,8 +206,14 @@ class _QRScreenState extends ConsumerState<QRScreen> with SingleTickerProviderSt
       if (mounted) {
         _showSuccessBottomSheet(sourceAccount.name);
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('QR Payment failed: $e')));
+    } on Object {
+      if (!mounted) return;
+      // Plain language, and no funds left the account, per requirement 3.4.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('That payment did not go through. No money was sent.'),
+        ),
+      );
       setState(() => _isProcessingQR = false);
       _scannerController.start();
     }
@@ -256,7 +266,9 @@ class _QRScreenState extends ConsumerState<QRScreen> with SingleTickerProviderSt
 
     final inputDecoration = InputDecoration(
       filled: true,
-      fillColor: isDark ? Colors.white.withOpacity(0.08) : Colors.grey.shade100,
+      fillColor: isDark
+          ? Colors.white.withValues(alpha: 0.08)
+          : Colors.grey.shade100,
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(30),
@@ -361,7 +373,15 @@ class _QRScreenState extends ConsumerState<QRScreen> with SingleTickerProviderSt
                     decoration: BoxDecoration(
                       color: Colors.white, 
                       borderRadius: BorderRadius.circular(24),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.05), blurRadius: 15, offset: const Offset(0, 5))],
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(
+                            alpha: isDark ? 0.3 : 0.05,
+                          ),
+                          blurRadius: 15,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
                     ),
                     child: QrImageView(
                       data: _generatedQRText,

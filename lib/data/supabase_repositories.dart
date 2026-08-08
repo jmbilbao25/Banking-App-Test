@@ -5,7 +5,6 @@ import '../core/supabase_config.dart';
 import '../domain/models.dart';
 import '../domain/repositories.dart';
 import '../domain/split_bill_model.dart';
-import 'mock_seed.dart';
 
 /// Robust enum parser resilient against case differences and string formatting.
 T _parseEnum<T extends Enum>(List<T> values, String raw, T fallback) {

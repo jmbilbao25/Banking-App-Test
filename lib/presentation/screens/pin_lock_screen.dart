@@ -236,12 +236,12 @@ class _PinLockScreenState extends ConsumerState<PinLockScreen> {
                             onTap: () => _onDigitPressed('0'),
                           ),
                           _KeypadButton(
+                            onTap: _onBackspacePressed,
                             child: const Icon(
                               Icons.backspace_outlined,
                               color: Colors.white,
                               size: 22,
                             ),
-                            onTap: _onBackspacePressed,
                           ),
                         ],
                       ),
