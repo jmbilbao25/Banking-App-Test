@@ -1,5 +1,8 @@
-// Throwaway: does the app ever leave the splash when session restore does not
-// answer? Run: flutter test test/tmp_splash_boot_test.dart
+// Requirement 8.5 caps the splash at 2000ms and requirement 8.6 requires it to
+// route to login with a notice when session resolution fails. A restore that
+// never answers is the case that used to strand the user on the launch screen
+// forever, so this is a regression guard rather than the throwaway it was
+// originally written as.
 import 'dart:async';
 import 'dart:ui' as ui;
 
