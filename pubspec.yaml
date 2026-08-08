@@ -23,6 +23,8 @@ dependencies:
   shared_preferences: ^2.3.0
   # Used to store a salted digest of the App_Lock PIN instead of the PIN itself.
   crypto: ^3.0.6
+  # App_Lock biometric confirmation, with PIN entry as the fallback.
+  local_auth: ^2.3.0
 
 dev_dependencies:
   flutter_test:

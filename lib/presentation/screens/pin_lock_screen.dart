@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/design/tokens.dart';
 import '../../core/design/typography.dart';
 import '../../core/persistence/pin_vault.dart';
+import '../../core/security/biometric_service.dart';
 import '../../state/providers.dart';
 import '../../state/session_controller.dart';
 import '../widgets/brand.dart';
@@ -47,6 +48,30 @@ class _PinLockScreenState extends ConsumerState<PinLockScreen> {
     _stage = ref.read(pinVaultProvider).hasPin
         ? _PinStage.verify
         : _PinStage.create;
+    if (_stage == _PinStage.verify) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _offerBiometric());
+    }
+  }
+
+  /// Requirement 5.3: where the device reports an enrolled biometric, biometric
+  /// confirmation is the primary unlock method and PIN entry is the fallback. A
+  /// cancelled or unavailable prompt simply leaves the keypad in place.
+  Future<void> _offerBiometric() async {
+    if (!mounted) return;
+    if (!ref.read(preferencesProvider).biometricUnlock) return;
+
+    final service = ref.read(biometricServiceProvider);
+    if (!await service.isEnrolled()) return;
+    if (!mounted) return;
+
+    final result = await service.authenticate(
+      reason: 'Unlock FrostBank',
+    );
+    if (!mounted || result != BiometricResult.success) return;
+
+    await ref.read(pinVaultProvider).clearFailures();
+    if (!mounted) return;
+    await _enterApplication();
   }
 
   void _onDigitPressed(String digit) {
@@ -161,6 +186,8 @@ class _PinLockScreenState extends ConsumerState<PinLockScreen> {
       }
     }
     if (!mounted) return;
+    // Releases the guard, so authenticated routes resolve again.
+    ref.read(appLockProvider.notifier).unlock();
     context.go('/');
   }
 

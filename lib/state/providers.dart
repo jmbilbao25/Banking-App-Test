@@ -7,7 +7,9 @@ import '../core/config/api_config.dart';
 import '../core/persistence/credential_vault.dart';
 import '../core/persistence/persistence_store.dart';
 import '../core/persistence/pin_vault.dart';
+import '../core/security/biometric_service.dart';
 import '../core/supabase_config.dart';
+import 'app_lock_controller.dart';
 import '../data/mock_data_source.dart';
 import '../data/mock_snapshot.dart';
 import '../data/mock_market_repository.dart';
@@ -36,6 +38,23 @@ final persistenceStoreProvider = Provider<PersistenceStore>(
 /// Holds the App_Lock PIN as a salted digest, never as the PIN itself.
 final pinVaultProvider = Provider<PinVault>(
   (ref) => PinVault(ref.watch(persistenceStoreProvider)),
+);
+
+/// Platform biometric prompt. Overridden in tests, which have no channel.
+final biometricServiceProvider = Provider<BiometricService>(
+  (ref) => LocalAuthBiometricService(),
+);
+
+/// True when the device reports an enrolled biometric. Requirement 23.7 renders
+/// the profile toggle disabled with an explanation when this is false.
+final biometricEnrolledProvider = FutureProvider<bool>(
+  (ref) => ref.watch(biometricServiceProvider).isEnrolled(),
+  retry: noAutomaticRetry,
+);
+
+/// Whether the authenticated surface is behind App_Lock.
+final appLockProvider = NotifierProvider<AppLockController, bool>(
+  AppLockController.new,
 );
 
 /// Holds demo account passwords as salted digests, so requirement 5.9 is met and

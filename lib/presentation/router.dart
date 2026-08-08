@@ -54,14 +54,19 @@ final routerProvider = Provider<GoRouter>((ref) {
       final session = ref.read(sessionProvider);
       final location = state.matchedLocation;
 
-      const authRoutes = {'/login', '/register', '/pin-lock'};
+      const authRoutes = {'/login', '/register', '/forgot-password', '/pin-lock'};
 
       return switch (session) {
         SessionUnknown() => location == '/splash' ? null : '/splash',
-        SessionSignedOut() =>
-          authRoutes.contains(location) ? null : '/login',
-        SessionSignedIn() =>
-          (location == '/splash' || location == '/ad') ? '/pin-lock' : null,
+        SessionSignedOut() => authRoutes.contains(location) ? null : '/login',
+        // Requirements 5.1 and 5.4: while App_Lock is engaged no authenticated
+        // route resolves, so the dashboard cannot be reached by deep link or by
+        // returning from the background.
+        SessionSignedIn() => switch (location) {
+          '/splash' || '/ad' => '/pin-lock',
+          '/pin-lock' => ref.read(appLockProvider) ? null : '/',
+          _ => ref.read(appLockProvider) ? '/pin-lock' : null,
+        },
       };
     },
     errorBuilder: (context, state) =>
@@ -206,6 +211,13 @@ class _SessionRefresh extends ChangeNotifier {
     );
     ref.listen<bool>(
       openingAdDismissedProvider,
+      (_, _) => notifyListeners(),
+      fireImmediately: false,
+    );
+    // A lock engaged by the background timeout has to re-run the guard, or the
+    // dashboard would stay on screen until the next navigation.
+    ref.listen<bool>(
+      appLockProvider,
       (_, _) => notifyListeners(),
       fireImmediately: false,
     );
