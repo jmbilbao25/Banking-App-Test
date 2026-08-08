@@ -6,10 +6,12 @@ import '../../core/design/tokens.dart';
 import '../../core/design/typography.dart';
 import '../../core/format/dates.dart';
 import '../../domain/models.dart';
+import '../../state/preferences_controller.dart';
 import '../../state/providers.dart';
 import '../widgets/pressable.dart';
 import '../widgets/states.dart';
 import '../widgets/surfaces.dart';
+import 'change_pin_sheet.dart';
 
 /// Profile, settings, security, and logout.
 class ProfileScreen extends ConsumerWidget {
@@ -108,11 +110,11 @@ class ProfileScreen extends ConsumerWidget {
               children: [
                 _ThemeRow(mode: preferences.themeMode),
                 _Divider(),
-                _NavRow(
+                _ActionRow(
                   icon: Icons.language_rounded,
                   label: 'Language',
                   value: 'English',
-                  route: '/soon/language',
+                  onTap: () => _pickLanguage(context),
                 ),
                 _Divider(),
                 _NavRow(
@@ -136,24 +138,21 @@ class ProfileScreen extends ConsumerWidget {
                       .toggleBalanceVisibility(),
                 ),
                 _Divider(),
-                _NavRow(
+                _ActionRow(
                   icon: Icons.pin_rounded,
-                  label: 'Change PIN',
-                  route: '/soon/change-pin',
+                  label: ref.watch(pinVaultProvider).hasPin
+                      ? 'Change PIN'
+                      : 'Set PIN',
+                  onTap: () => _changePin(context),
                 ),
                 _Divider(),
-                _NavRow(
-                  icon: Icons.fingerprint_rounded,
-                  label: 'Biometric unlock',
-                  value: 'Not set up',
-                  route: '/soon/biometrics',
-                ),
+                const _BiometricRow(),
                 _Divider(),
-                _NavRow(
+                _ActionRow(
                   icon: Icons.timer_outlined,
                   label: 'Session timeout',
-                  value: '2 minutes',
-                  route: '/soon/session-timeout',
+                  value: _timeoutLabel(preferences.sessionTimeout),
+                  onTap: () => _pickSessionTimeout(context, ref),
                 ),
               ],
             ),
@@ -161,10 +160,10 @@ class ProfileScreen extends ConsumerWidget {
             const SectionHeader(title: 'About'),
             _SettingsCard(
               children: [
-                _NavRow(
+                _ActionRow(
                   icon: Icons.info_outline_rounded,
                   label: 'About this build',
-                  route: '/soon/about',
+                  onTap: () => _showAbout(context),
                 ),
               ],
             ),
@@ -361,22 +360,128 @@ class _NavRow extends StatelessWidget {
   }
 }
 
+/// A settings row that runs a callback instead of pushing a route, so a control
+/// can open a sheet without a placeholder destination.
+class _ActionRow extends StatelessWidget {
+  const _ActionRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final String? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Pressable(
+      onTap: onTap,
+      semanticLabel: value == null ? label : '$label, $value',
+      borderRadius: AppRadius.lg,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.x4,
+          vertical: Space.x4,
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: tokens.textSecondary),
+            const SizedBox(width: Space.x3),
+            Expanded(
+              child: Text(
+                label,
+                style: AppType.titleSmall.copyWith(color: tokens.textPrimary),
+              ),
+            ),
+            if (value != null)
+              Text(
+                value!,
+                style: AppType.bodyMedium.copyWith(color: tokens.textSecondary),
+              ),
+            const SizedBox(width: Space.x1),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: tokens.textSecondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Biometric unlock toggle.
+///
+/// Requirement 23.7: where the device reports no enrolled biometric the control
+/// renders disabled with a message saying so, rather than offering a switch that
+/// silently does nothing. The state is read from the platform, so it is a real
+/// semantic value as requirement 25.4 asks.
+class _BiometricRow extends ConsumerWidget {
+  const _BiometricRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enrolled = ref.watch(biometricEnrolledProvider);
+    final preferences = ref.watch(preferencesProvider);
+
+    return enrolled.when(
+      loading: () => const _ToggleRow(
+        icon: Icons.fingerprint_rounded,
+        label: 'Biometric unlock',
+        value: false,
+        onChanged: null,
+        subtitle: 'Checking this device',
+      ),
+      error: (_, _) => const _ToggleRow(
+        icon: Icons.fingerprint_rounded,
+        label: 'Biometric unlock',
+        value: false,
+        onChanged: null,
+        subtitle: 'We could not check this device',
+      ),
+      data: (isEnrolled) => _ToggleRow(
+        icon: Icons.fingerprint_rounded,
+        label: 'Biometric unlock',
+        value: isEnrolled && preferences.biometricUnlock,
+        subtitle: isEnrolled
+            ? null
+            : 'No biometric is enrolled on this device',
+        onChanged: isEnrolled
+            ? (next) =>
+                  ref.read(preferencesProvider.notifier).setBiometricUnlock(next)
+            : null,
+      ),
+    );
+  }
+}
+
 class _ToggleRow extends StatelessWidget {
   const _ToggleRow({
     required this.icon,
     required this.label,
     required this.value,
     required this.onChanged,
+    this.subtitle,
   });
 
   final IconData icon;
   final String label;
   final bool value;
-  final ValueChanged<bool> onChanged;
+
+  /// Null renders the switch disabled.
+  final ValueChanged<bool>? onChanged;
+
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final disabled = onChanged == null;
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: Space.x4,
@@ -384,12 +489,32 @@ class _ToggleRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: tokens.textSecondary),
+          Icon(
+            icon,
+            size: 20,
+            color: disabled ? tokens.disabled : tokens.textSecondary,
+          ),
           const SizedBox(width: Space.x3),
           Expanded(
-            child: Text(
-              label,
-              style: AppType.titleSmall.copyWith(color: tokens.textPrimary),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: AppType.titleSmall.copyWith(
+                    color: disabled ? tokens.textSecondary : tokens.textPrimary,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: Space.x1),
+                  Text(
+                    subtitle!,
+                    style: AppType.bodySmall.copyWith(
+                      color: tokens.textSecondary,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           Switch(
@@ -456,6 +581,171 @@ class _ThemeRow extends ConsumerWidget {
     );
   }
 }
+
+String _timeoutLabel(Duration timeout) {
+  if (timeout.inMinutes < 1) return '${timeout.inSeconds} seconds';
+  final minutes = timeout.inMinutes;
+  return minutes == 1 ? '1 minute' : '$minutes minutes';
+}
+
+Future<void> _changePin(BuildContext context) async {
+  final changed = await ChangePinSheet.show(context);
+  if (changed != true || !context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Your PIN has been updated.')),
+  );
+}
+
+/// Requirement 23.4: the customer sets the session timeout. The shortest option
+/// is the 120 seconds requirement 5.4 names, so the choice cannot weaken the
+/// floor the specification sets.
+Future<void> _pickSessionTimeout(BuildContext context, WidgetRef ref) async {
+  final current = ref.read(preferencesProvider).sessionTimeout;
+
+  final chosen = await showModalBottomSheet<Duration>(
+    context: context,
+    useSafeArea: true,
+    builder: (sheetContext) {
+      final tokens = sheetContext.tokens;
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(Space.x6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Session timeout',
+                    style: AppType.titleLarge.copyWith(
+                      color: tokens.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: Space.x2),
+                  Text(
+                    'How long FrostBank can sit in the background before it asks '
+                    'for your PIN again.',
+                    style: AppType.bodySmall.copyWith(
+                      color: tokens.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            RadioGroup<Duration>(
+              groupValue: current,
+              onChanged: (value) => Navigator.of(sheetContext).pop(value),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final option in Preferences.sessionTimeoutOptions)
+                    RadioListTile<Duration>(
+                      value: option,
+                      activeColor: tokens.accent,
+                      title: Text(
+                        _timeoutLabel(option),
+                        style: AppType.titleSmall.copyWith(
+                          color: tokens.textPrimary,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: Space.x4),
+          ],
+        ),
+      );
+    },
+  );
+
+  if (chosen == null) return;
+  ref.read(preferencesProvider.notifier).setSessionTimeout(chosen);
+}
+
+/// Requirement 23.3 asks for a language option. Only English ships, so the sheet
+/// says exactly that instead of routing to a placeholder screen.
+Future<void> _pickLanguage(BuildContext context) => showModalBottomSheet<void>(
+  context: context,
+  useSafeArea: true,
+  builder: (sheetContext) {
+    final tokens = sheetContext.tokens;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(Space.x6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Language',
+              style: AppType.titleLarge.copyWith(color: tokens.textPrimary),
+            ),
+            const SizedBox(height: Space.x2),
+            Text(
+              'FrostBank is available in English. More languages are not part of '
+              'this build.',
+              style: AppType.bodySmall.copyWith(color: tokens.textSecondary),
+            ),
+            const SizedBox(height: Space.x5),
+            Row(
+              children: [
+                Icon(Icons.check_rounded, size: 20, color: tokens.accent),
+                const SizedBox(width: Space.x3),
+                Text(
+                  'English',
+                  style: AppType.titleSmall.copyWith(
+                    color: tokens.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  },
+);
+
+/// Requirement 23.9: the About section states that every figure is mock data.
+Future<void> _showAbout(BuildContext context) => showModalBottomSheet<void>(
+  context: context,
+  useSafeArea: true,
+  builder: (sheetContext) {
+    final tokens = sheetContext.tokens;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(Space.x6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'About this build',
+              style: AppType.titleLarge.copyWith(color: tokens.textPrimary),
+            ),
+            const SizedBox(height: Space.x3),
+            Text(
+              'FrostBank is a presentation build. Every balance, card number, '
+              'rate, holding and transaction in this application is mock data '
+              'generated on this device. No real account is reachable and no '
+              'money can move.',
+              style: AppType.bodyMedium.copyWith(color: tokens.textSecondary),
+            ),
+            const SizedBox(height: Space.x4),
+            Text(
+              'Your PIN is stored on this device as a salted digest, never as '
+              'the digits you chose.',
+              style: AppType.bodyMedium.copyWith(color: tokens.textSecondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  },
+);
 
 void _showEditProfileModal(
   BuildContext context,
