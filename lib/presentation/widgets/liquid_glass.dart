@@ -102,20 +102,25 @@ class LiquidGlass extends StatelessWidget {
           shape: LiquidGlassShape.continuousRoundedRectangle(
             cornerRadius: radius,
             lightColor: glass.rimTop,
+            // Gain on the specular rim. The rim is where nearly all of the sense
+            // of a lit, solid edge comes from, so it is worth pushing slightly
+            // past unity.
+            lightIntensity: glass.rimIntensity,
             // The rim is the shader's, not a painter's, and that is the upgrade.
             // A painted rim can only ever be the colour it was written as. This
             // one takes its colour from whatever is currently behind the pane,
             // which is what an edge of real glass does.
-            borderType: const OpticalBorder(
+            borderType: OpticalBorder(
               // Above one, so the cold blues the brand backdrop is made of come
               // back saturated at the rim instead of washing to white.
-              borderSaturation: 1.4,
+              borderSaturation: glass.rimSaturation,
               // Keeps the rim lit on the side facing away from the light, so the
               // pane never loses an edge against a dark backdrop.
               ambientIntensity: 1.1,
-              // Translucent. A solid rim is a border, and a border is the thing
-              // this whole surface is trying not to be.
-              borderSolidity: 0,
+              // See [Glass.rimSolidity]. This was pinned at zero on the argument
+              // that a solid rim is a border; at zero the rim never resolves into
+              // a line at all and the pane loses its edge.
+              borderSolidity: glass.rimSolidity,
             ),
           ),
           appearance: LiquidGlassAppearance(
@@ -210,12 +215,16 @@ class _GlassBodyPainter extends CustomPainter {
     // what made the old bar read as a slab. Off the shortest side it stays a
     // highlight near the corner the light comes from, and it still opens up to
     // roughly its old size on a surface that is nearer square.
+    // 1.15 rather than 1.6. Even off the shortest side, 1.6 put the falloff
+    // beyond the far edge of a 68 pixel bar, so the whole pane sat inside the
+    // bloom and read as an even ramp. A highlight has to end somewhere inside the
+    // surface to be read as a highlight.
     canvas.drawRect(
       rect,
       Paint()
         ..shader = ui.Gradient.radial(
           bloomAlignment.withinRect(rect),
-          size.shortestSide * 1.6,
+          size.shortestSide * 1.15,
           [glass.bloom, glass.bloom.withValues(alpha: 0)],
           const [0, 1],
         ),
@@ -254,7 +263,20 @@ class _GlassSheenPainter extends CustomPainter {
     canvas.save();
     canvas.clipRRect(shape);
 
-    final inner = glass.rimTop.withValues(alpha: glass.rimTop.a * 0.3);
+    // [Glass.rimDim] rather than a faded [Glass.rimTop], which is the difference
+    // between a pane that has an edge in both tiers and one that only has an edge
+    // in the dark.
+    //
+    // rimTop is the specular colour, and in the light recipe it is pure white. A
+    // white hairline just inside a white rim, on a pane sitting over a white sheet,
+    // is three whites: reviewers reported the light bar as having no edge at all and
+    // reading as a slightly lighter card, and no amount of gain on the rim fixes
+    // that, because gain on white over white produces more white. rimDim is the
+    // edge colour appropriate to each tier - navy in the light recipe, white in the
+    // dark - so this contour darkens the inside of the edge over a bright backdrop
+    // and lightens it over a dark one, which is the sign a real edge changes with
+    // what is behind it.
+    final inner = glass.rimDim;
     canvas.drawRRect(
       shape.deflate(2.4),
       Paint()
