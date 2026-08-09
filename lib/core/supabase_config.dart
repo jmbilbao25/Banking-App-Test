@@ -2,33 +2,35 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Central configuration for Supabase integration in FrostBank.
+///
+/// Requirement 5.9 forbids any credential value in the application source, so
+/// neither field carries a default. A build that does not pass both defines
+/// runs fully offline against the mock repository layer, which is the primary
+/// mode described in the design document.
+///
+/// ```
+/// flutter run \
+///   --dart-define=SUPABASE_URL=https://your-project.supabase.co \
+///   --dart-define=SUPABASE_ANON_KEY=your_anon_key
+/// ```
 class SupabaseConfig {
   SupabaseConfig._();
 
-  /// URL of the Supabase project. Can be provided via `--dart-define=SUPABASE_URL=...`
-  static const String url = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: 'https://twkivwbonwzbkgiyllpo.supabase.co',
-  );
+  /// Project URL, supplied at build time by `--dart-define=SUPABASE_URL=...`.
+  static const String url = String.fromEnvironment('SUPABASE_URL');
 
-  /// Anonymous key for the Supabase project. Can be provided via `--dart-define=SUPABASE_ANON_KEY=...`
-  static const String anonKey = String.fromEnvironment(
-    'SUPABASE_ANON_KEY',
-    defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR3a2l2d2Jvbnd6YmtnaXlsbHBvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5MTI2MTQsImV4cCI6MjEwMTQ4ODYxNH0.qRHmgAYRoqDJMs9G2uOm6J8gbPUmtTrznimnh4Ykxtw',
-  );
+  /// Anonymous key, supplied at build time by
+  /// `--dart-define=SUPABASE_ANON_KEY=...`.
+  static const String anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
-  /// Explicit flag to force-enable or disable Supabase backend.
-  static const bool enabled = bool.fromEnvironment(
-    'USE_SUPABASE',
-    defaultValue: false,
-  );
-
-  /// Returns true if Supabase URL and Anon Key are validly set.
+  /// True only when both credentials were supplied at build time.
   static bool get isConfigured =>
       url.trim().isNotEmpty && anonKey.trim().isNotEmpty;
 
-  /// Whether Supabase should be active (both enabled/configured).
-  static bool get shouldInitialize => isConfigured || enabled;
+  /// Supabase is used only when it was actually configured. Without credentials
+  /// the application stays on the mock repository layer rather than starting a
+  /// client that cannot authenticate.
+  static bool get shouldInitialize => isConfigured;
 
   static bool _initialized = false;
   static bool get isInitialized => _initialized;
@@ -39,7 +41,10 @@ class SupabaseConfig {
 
     if (!isConfigured) {
       debugPrint(
-        'Supabase is not configured. Provide SUPABASE_URL and SUPABASE_ANON_KEY via --dart-define or configure lib/core/supabase_config.dart.',
+        'Supabase credentials were not supplied at build time. '
+        'FrostBank is running offline against the mock repository layer. '
+        'Pass --dart-define=SUPABASE_URL and --dart-define=SUPABASE_ANON_KEY '
+        'to use a live project.',
       );
       return;
     }

@@ -211,7 +211,9 @@ class _SelectionCapsuleState extends State<_SelectionCapsule>
               stretch: Motion.amount(context, 1),
               fill: glass.indicator,
               rim: glass.indicatorRim,
-              glow: reducedGlass ? const Color(0x00000000) : glass.indicatorGlow,
+              glow: reducedGlass
+                  ? const Color(0x00000000)
+                  : glass.indicatorGlow,
             ),
           ),
         ),
@@ -263,7 +265,7 @@ class _CapsulePainter extends CustomPainter {
     if (faded) {
       canvas.saveLayer(
         null,
-        Paint()..color = const Color(0xFF000000).withValues(alpha: opacity),
+        Paint()..color = Colors.black.withValues(alpha: opacity),
       );
     }
 
@@ -280,18 +282,14 @@ class _CapsulePainter extends CustomPainter {
     final width = restWidth * (1 + reach * smear);
     final height = restHeight * (1 - 0.1 * reach * smear);
 
-    final centreX =
-        ui.lerpDouble(from + 0.5, to + 0.5, travelled)! * slotWidth;
+    final centreX = ui.lerpDouble(from + 0.5, to + 0.5, travelled)! * slotWidth;
 
     final rect = Rect.fromCenter(
       center: Offset(centreX, size.height / 2),
       width: width,
       height: height,
     );
-    final shape = RRect.fromRectAndRadius(
-      rect,
-      Radius.circular(height / 2),
-    );
+    final shape = RRect.fromRectAndRadius(rect, Radius.circular(height / 2));
 
     // The brand colour arrives as light spilling from under the capsule rather
     // than as fill, which is what keeps the selected destination reading as a
@@ -308,11 +306,7 @@ class _CapsulePainter extends CustomPainter {
     canvas.drawRRect(
       shape,
       Paint()
-        ..shader = ui.Gradient.linear(
-          rect.topCenter,
-          rect.bottomCenter,
-          fill,
-        ),
+        ..shader = ui.Gradient.linear(rect.topCenter, rect.bottomCenter, fill),
     );
 
     // Rim, brightest across the top where the pane's own light lands.
@@ -324,7 +318,11 @@ class _CapsulePainter extends CustomPainter {
         ..shader = ui.Gradient.linear(
           rect.topCenter,
           rect.bottomCenter,
-          [rim, rim.withValues(alpha: rim.a * 0.3), rim.withValues(alpha: rim.a * 0.55)],
+          [
+            rim,
+            rim.withValues(alpha: rim.a * 0.3),
+            rim.withValues(alpha: rim.a * 0.55),
+          ],
           const [0, 0.6, 1],
         ),
     );
@@ -337,14 +335,10 @@ class _CapsulePainter extends CustomPainter {
     canvas.drawRect(
       crown,
       Paint()
-        ..shader = ui.Gradient.linear(
-          crown.topCenter,
-          crown.bottomCenter,
-          [
-            rim.withValues(alpha: rim.a * 0.3),
-            rim.withValues(alpha: 0),
-          ],
-        ),
+        ..shader = ui.Gradient.linear(crown.topCenter, crown.bottomCenter, [
+          rim.withValues(alpha: rim.a * 0.3),
+          rim.withValues(alpha: 0),
+        ]),
     );
     canvas.restore();
 
@@ -413,11 +407,19 @@ class _HomeMarkState extends State<_HomeMark>
     if (old.isActive != widget.isActive) _sync();
   }
 
+  /// State transition: the mark acknowledges becoming the active destination
+  /// once and then rests.
+  ///
+  /// This used to call repeat(), which left a beacon sweeping forever behind a
+  /// BackdropFilter on the most visited screen. That is two problems in one:
+  /// requirement 2.6 permits exactly one repeating animation in the application,
+  /// which is the splash indicator, and a permanently animating layer over a
+  /// blur forces that blur to re-rasterise every frame for the life of the
+  /// session.
   void _sync() {
     final shouldRun = widget.isActive && !Motion.isReduced(context);
-    if (shouldRun == _beacon.isAnimating) return;
     if (shouldRun) {
-      _beacon.repeat();
+      _beacon.forward(from: 0);
     } else {
       _beacon
         ..stop()

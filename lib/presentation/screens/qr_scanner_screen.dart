@@ -8,6 +8,7 @@ import '../../core/design/tokens.dart';
 import '../../core/design/typography.dart';
 import '../../state/providers.dart';
 import '../../state/split_bills_controller.dart';
+import '../widgets/camera_permission.dart';
 import '../widgets/money_text.dart';
 
 // ---------------------------------------------------------------------------
@@ -306,7 +307,10 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
     final overlayBg = isDark
         ? Colors.black.withValues(alpha: 0.55)
         : Colors.black.withValues(alpha: 0.45);
-    final bracketColor = isDark ? const Color(0xFF6A5CFF) : const Color(0xFF6A5CFF);
+    // Both branches of the previous ternary were the same literal, which was the
+    // accent token spelled by hand. The viewport is dark in either theme, so the
+    // bracket reads from the dark token set.
+    final bracketColor = AppTokens.dark.accent;
     final labelBg = Colors.black.withValues(alpha: 0.65);
 
     return Scaffold(
@@ -338,7 +342,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
         ],
       ),
       body: _permissionDenied
-          ? _PermissionDeniedView(
+          ? CameraPermissionDeniedView(
               onRetry: () => setState(() => _permissionDenied = false),
             )
           : Stack(
@@ -643,61 +647,9 @@ class _CameraErrorView extends StatelessWidget {
   }
 }
 
-class _PermissionDeniedView extends StatelessWidget {
-  const _PermissionDeniedView({required this.onRetry});
-
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Colors.black,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.no_photography_outlined,
-                  color: Colors.white54, size: 72),
-              const SizedBox(height: 20),
-              Text(
-                'Camera Permission Required',
-                style: AppType.titleMedium.copyWith(color: Colors.white),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'FrostBank needs camera access to scan QR codes. '
-                'Please grant permission in your device settings.',
-                style: AppType.bodySmall.copyWith(color: Colors.white70),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 28),
-              FilledButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Try again'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF6A5CFF),
-                  foregroundColor: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: Text(
-                  'Go back',
-                  style: AppType.labelMedium.copyWith(color: Colors.white60),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+// The permission denied view now lives in
+// lib/presentation/widgets/camera_permission.dart, shared with the QR payment
+// screen, and carries the settings control requirement 17.5 asks for.
 
 // ---------------------------------------------------------------------------
 // Payment confirmation bottom sheet

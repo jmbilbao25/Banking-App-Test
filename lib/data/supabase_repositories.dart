@@ -5,7 +5,6 @@ import '../core/supabase_config.dart';
 import '../domain/models.dart';
 import '../domain/repositories.dart';
 import '../domain/split_bill_model.dart';
-import 'mock_seed.dart';
 
 /// Robust enum parser resilient against case differences and string formatting.
 T _parseEnum<T extends Enum>(List<T> values, String raw, T fallback) {
@@ -113,7 +112,6 @@ class SupabaseMappers {
       email: map['email'] as String,
       mobile: map['mobile'] as String,
       memberSince: DateTime.parse(map['member_since'] as String),
-      pinCode: map['pin_code']?.toString() ?? '123456',
     );
   }
 
@@ -565,6 +563,38 @@ class SupabaseTransactionRepository implements TransactionRepository {
     }
   }
 
+  /// Requirement 15.10, pushed down to the query with `range` so a long history
+  /// is never fetched whole just to show twenty rows.
+  @override
+  Future<List<Txn>> fetchTransactionPage({
+    String? accountId,
+    required int offset,
+    required int limit,
+  }) async {
+    try {
+      final user = _client.auth.currentUser;
+      if (user == null) throw const RepositoryFailure('User not authenticated');
+      var query = _client.from('transactions').select();
+      if (accountId != null) {
+        query = query.eq('account_id', accountId);
+      } else {
+        query = query.eq('user_id', user.id);
+      }
+      final response = await query
+          .order('date', ascending: false)
+          .range(offset, offset + limit - 1);
+      return (response as List)
+          .map(
+            (item) => SupabaseMappers.transactionFromMap(
+              item as Map<String, dynamic>,
+            ),
+          )
+          .toList();
+    } catch (e) {
+      throw RepositoryFailure('Could not load transactions from Supabase: $e');
+    }
+  }
+
   @override
   Future<Txn> fetchTransaction(String id) async {
     try {
@@ -646,7 +676,6 @@ class SupabaseProfileRepository implements ProfileRepository {
         'email': profile.email,
         'mobile': profile.mobile,
         'member_since': profile.memberSince.toIso8601String(),
-        'pin_code': profile.pinCode,
       });
       return profile;
     } catch (e) {
@@ -940,7 +969,7 @@ class SupabaseSavingsGoalRepository implements SavingsGoalRepository {
         await _adjustAccountBalance(
           accountId: 'acc_wallet',
           amountChange: current.balance,
-          note: 'Goal closed — funds returned (${current.name})',
+          note: 'Goal closed, funds returned (${current.name})',
           direction: 'inflow',
         );
       }

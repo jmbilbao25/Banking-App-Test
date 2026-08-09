@@ -1,10 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/design/tokens.dart';
 import '../../core/design/typography.dart';
+import '../../core/format/txn_csv.dart';
 import '../../domain/models.dart';
+import '../../domain/repositories.dart';
 import '../../state/providers.dart';
 import '../../state/txn_filter.dart';
 import '../widgets/pressable.dart';
@@ -12,7 +17,149 @@ import '../widgets/states.dart';
 import '../widgets/surfaces.dart';
 import '../widgets/transaction_list.dart';
 
-/// Full ledger with search, filters, and removable filter chips.
+/// Rows requested per page. Requirement 15.10 asks for the next 20, so this is
+/// the figure the criterion names rather than a tunable.
+const int txnPageSize = 20;
+
+/// What the ledger has loaded so far, and what it is doing about the rest.
+///
+/// [rows] is the raw reverse chronological list as returned by the repository,
+/// before the active filter is applied. Filtering happens over this loaded set
+/// in the presentation layer, so requirements 15.5 to 15.8 keep working while
+/// only part of the ledger is in memory.
+@immutable
+class TxnPageState {
+  const TxnPageState({
+    this.rows = const <Txn>[],
+    this.hasMore = true,
+    this.isLoadingMore = false,
+    this.loadMoreError,
+  });
+
+  final List<Txn> rows;
+
+  /// False once a short page has proved the end has been reached. There is no
+  /// total count by design, so a page shorter than [txnPageSize] is the signal.
+  final bool hasMore;
+
+  /// True while one page request is in flight. Guards against a second request
+  /// for the same offset, which would append the same rows twice.
+  final bool isLoadingMore;
+
+  /// Set when a page request failed. The rows already loaded stay on screen and
+  /// the failure is offered as an inline retry at the end of the list.
+  final String? loadMoreError;
+
+  TxnPageState copyWith({
+    List<Txn>? rows,
+    bool? hasMore,
+    bool? isLoadingMore,
+    String? loadMoreError,
+    bool clearLoadMoreError = false,
+  }) => TxnPageState(
+    rows: rows ?? this.rows,
+    hasMore: hasMore ?? this.hasMore,
+    isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+    loadMoreError: clearLoadMoreError
+        ? null
+        : (loadMoreError ?? this.loadMoreError),
+  );
+}
+
+/// Pages the full ledger through [TransactionRepository.fetchTransactionPage].
+///
+/// The first page resolves through the async value, so the existing skeleton and
+/// failure rendering of requirement 3 covers the initial load. Every later page
+/// is folded into the loaded data instead, because tearing a populated list back
+/// down to its skeleton to append 20 rows would read as the screen flashing.
+class TxnPagingController extends AsyncNotifier<TxnPageState> {
+  @override
+  Future<TxnPageState> build() async {
+    final page = await ref
+        .watch(transactionRepositoryProvider)
+        .fetchTransactionPage(offset: 0, limit: txnPageSize);
+    return TxnPageState(rows: page, hasMore: page.length == txnPageSize);
+  }
+
+  /// Requests the next [txnPageSize] rows and appends them.
+  ///
+  /// A no op while a request is in flight, once the end has been reached, or
+  /// while a previous failure is waiting on its retry, so scrolling at the end
+  /// of the list cannot queue several requests for the same offset.
+  Future<void> loadMore() async {
+    final current = state.value;
+    if (current == null) return;
+    if (current.isLoadingMore || !current.hasMore) return;
+    if (current.loadMoreError != null) return;
+    await _fetchNext(current);
+  }
+
+  /// Retries the page that failed, from the same offset.
+  Future<void> retryLoadMore() async {
+    final current = state.value;
+    if (current == null || current.isLoadingMore) return;
+    await _fetchNext(current);
+  }
+
+  Future<void> _fetchNext(TxnPageState current) async {
+    final offset = current.rows.length;
+    state = AsyncData(
+      current.copyWith(isLoadingMore: true, clearLoadMoreError: true),
+    );
+
+    try {
+      final page = await ref
+          .read(transactionRepositoryProvider)
+          .fetchTransactionPage(offset: offset, limit: txnPageSize);
+
+      // Identity guard. A repeated page, whatever its cause, must not put the
+      // same transaction on screen twice.
+      final seen = <String>{for (final row in current.rows) row.id};
+      final appended = <Txn>[
+        ...current.rows,
+        ...page.where((row) => seen.add(row.id)),
+      ];
+
+      state = AsyncData(
+        TxnPageState(rows: appended, hasMore: page.length == txnPageSize),
+      );
+    } on RepositoryFailure catch (error) {
+      state = AsyncData(
+        current.copyWith(isLoadingMore: false, loadMoreError: error.message),
+      );
+    } catch (_) {
+      state = AsyncData(
+        current.copyWith(
+          isLoadingMore: false,
+          loadMoreError: 'We could not load more transactions.',
+        ),
+      );
+    }
+  }
+}
+
+/// The paged ledger. Declared here so the screen owns it; lift it into
+/// `providers.dart` alongside the other transaction reads at integration.
+final txnPagingProvider =
+    AsyncNotifierProvider<TxnPagingController, TxnPageState>(
+      TxnPagingController.new,
+      retry: noAutomaticRetry,
+    );
+
+/// The seam requirement 15.11 writes through, bound to application storage.
+///
+/// Tests override this with a spy, so no test touches a filesystem. A throw
+/// becomes the failure message the screen displays.
+final txnExportWriterProvider = Provider<TxnExportWriter>(
+  (ref) => (filename, contents) async {
+    final directory = await getApplicationDocumentsDirectory();
+    final file = File('${directory.path}/$filename');
+    await file.writeAsString(contents);
+    return file.path;
+  },
+);
+
+/// Full ledger with search, filters, removable filter chips, paging, and export.
 class TransactionHistoryScreen extends ConsumerStatefulWidget {
   const TransactionHistoryScreen({super.key});
 
@@ -27,18 +174,51 @@ class _TransactionHistoryScreenState
     text: ref.read(txnFilterProvider).query,
   );
 
+  /// Drives the end of list detection of requirement 15.10.
+  final ScrollController _scroll = ScrollController();
+
+  /// Distance from the end at which the next page is requested, so the rows
+  /// arrive before the user meets the bottom.
+  static const double _loadMoreThreshold = 240;
+
+  bool _isExporting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+  }
+
   @override
   void dispose() {
+    _scroll
+      ..removeListener(_onScroll)
+      ..dispose();
     _search.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scroll.hasClients) return;
+    final position = _scroll.position;
+    if (position.pixels < position.maxScrollExtent - _loadMoreThreshold) return;
+    ref.read(txnPagingProvider.notifier).loadMore();
   }
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final filter = ref.watch(txnFilterProvider);
-    final rows = ref.watch(filteredTransactionsProvider);
+    final paging = ref.watch(txnPagingProvider);
     final accounts = ref.watch(accountsProvider).value ?? const <Account>[];
+
+    // The filter is applied over what has been paged in, so every criterion
+    // from the chips to the Empty_State reads against the rows on screen.
+    final rows = paging.whenData(
+      (page) => filter.apply(page.rows),
+    );
+    final loaded = paging.value;
+    final filteredRows = rows.value ?? const <Txn>[];
 
     // Keep the field in step when another screen hands a query over.
     ref.listen(txnFilterProvider, (_, next) {
@@ -49,6 +229,13 @@ class _TransactionHistoryScreenState
       appBar: AppBar(
         title: const Text('Activity'),
         actions: [
+          IconButton(
+            onPressed: paging.hasValue && !_isExporting
+                ? () => _export(filteredRows)
+                : null,
+            tooltip: 'Export CSV',
+            icon: const Icon(Icons.download_rounded),
+          ),
           IconButton(
             onPressed: () => _openFilters(context),
             tooltip: 'Filter transactions',
@@ -110,10 +297,11 @@ class _TransactionHistoryScreenState
               child: RefreshIndicator(
                 color: tokens.accent,
                 onRefresh: () async {
-                  ref.invalidate(transactionsProvider);
-                  await ref.read(filteredTransactionsProvider.future);
+                  ref.invalidate(txnPagingProvider);
+                  await ref.read(txnPagingProvider.future);
                 },
                 child: ListView(
+                  controller: _scroll,
                   padding: const EdgeInsets.fromLTRB(
                     Space.x5,
                     Space.x2,
@@ -123,7 +311,7 @@ class _TransactionHistoryScreenState
                   children: [
                     AsyncSection<List<Txn>>(
                       value: rows,
-                      onRetry: () => ref.invalidate(transactionsProvider),
+                      onRetry: () => ref.invalidate(txnPagingProvider),
                       skeleton: const SkeletonRows(count: 7),
                       isEmpty: (data) => data.isEmpty,
                       empty: EmptyStateView(
@@ -142,11 +330,45 @@ class _TransactionHistoryScreenState
                         onSelect: (txn) => context.push('/txn/${txn.id}'),
                       ),
                     ),
+                    if (loaded != null) _ListEnd(page: loaded),
                   ],
                 ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Requirement 15.11. Encodes the filtered rows, hands them to the writer
+  /// seam, and reports the outcome including the count and the destination.
+  Future<void> _export(List<Txn> rows) async {
+    if (_isExporting) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final writer = ref.read(txnExportWriterProvider);
+    setState(() => _isExporting = true);
+
+    String? destination;
+    String? failure;
+    try {
+      destination = await writer(txnCsvFilename(), encodeTxnCsv(rows));
+    } on RepositoryFailure catch (error) {
+      failure = error.message;
+    } catch (_) {
+      failure = 'We could not save the file.';
+    }
+
+    if (!mounted) return;
+    setState(() => _isExporting = false);
+
+    final label = rows.length == 1 ? 'row' : 'rows';
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          destination != null
+              ? 'Exported ${rows.length} $label to $destination'
+              : 'Export failed. $failure',
         ),
       ),
     );
@@ -158,6 +380,70 @@ class _TransactionHistoryScreenState
       showDragHandle: true,
       isScrollControlled: true,
       builder: (_) => const _FilterSheet(),
+    );
+  }
+}
+
+/// The tail of the list: a bounded progress indicator while a page is in
+/// flight, an inline retry when one failed, and an explicit control so a filter
+/// that shortens the list past the fold can still reach further pages.
+class _ListEnd extends ConsumerWidget {
+  const _ListEnd({required this.page});
+
+  final TxnPageState page;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = context.tokens;
+
+    if (page.isLoadingMore) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: Space.x5),
+        child: Center(
+          // Feedback: an indeterminate spinner marks one page request in
+          // flight, bounded so it never grows into the list.
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    final failure = page.loadMoreError;
+    if (failure != null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: Space.x4),
+        child: ErrorStateView(
+          message: failure,
+          onRetry: () => ref.read(txnPagingProvider.notifier).retryLoadMore(),
+        ),
+      );
+    }
+
+    if (page.hasMore) {
+      return Padding(
+        padding: const EdgeInsets.only(top: Space.x4),
+        child: Center(
+          child: TextButton(
+            onPressed: () => ref.read(txnPagingProvider.notifier).loadMore(),
+            child: const Text('Load more'),
+          ),
+        ),
+      );
+    }
+
+    if (page.rows.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: Space.x5),
+      child: Center(
+        child: Text(
+          'End of activity',
+          style: AppType.labelMedium.copyWith(color: tokens.textSecondary),
+        ),
+      ),
     );
   }
 }

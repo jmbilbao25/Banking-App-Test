@@ -167,8 +167,11 @@ class _SavingsHeroCard extends ConsumerWidget {
                 height: 36,
                 radius: AppRadius.sm,
               ),
+              // Requirement 25.1 rules out the em dash that used to stand in
+              // here, and the mask glyphs read as "unavailable" rather than as a
+              // figure of zero.
               error: (_, _) => Text(
-                '—',
+                Money.maskGlyphs,
                 style: AppType.numericHero.copyWith(color: Colors.white),
               ),
               data: (amount) => MoneyText(

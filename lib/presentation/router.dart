@@ -10,8 +10,11 @@ import 'screens/cards_screen.dart';
 import 'screens/crypto_detail_screen.dart';
 import 'screens/crypto_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/forgot_password_screen.dart';
 import 'screens/goal_detail_screen.dart';
 import 'screens/hub_screen.dart';
+import 'screens/notifications_screen.dart';
+import 'screens/time_deposit_screen.dart';
 import 'screens/currency_selection_screen.dart';
 import 'screens/create_split_bill_screen.dart';
 import 'screens/login_screen.dart';
@@ -54,14 +57,19 @@ final routerProvider = Provider<GoRouter>((ref) {
       final session = ref.read(sessionProvider);
       final location = state.matchedLocation;
 
-      const authRoutes = {'/login', '/register', '/pin-lock'};
+      const authRoutes = {'/login', '/register', '/forgot-password', '/pin-lock'};
 
       return switch (session) {
         SessionUnknown() => location == '/splash' ? null : '/splash',
-        SessionSignedOut() =>
-          authRoutes.contains(location) ? null : '/login',
-        SessionSignedIn() =>
-          (location == '/splash' || location == '/ad') ? '/pin-lock' : null,
+        SessionSignedOut() => authRoutes.contains(location) ? null : '/login',
+        // Requirements 5.1 and 5.4: while App_Lock is engaged no authenticated
+        // route resolves, so the dashboard cannot be reached by deep link or by
+        // returning from the background.
+        SessionSignedIn() => switch (location) {
+          '/splash' || '/ad' => '/pin-lock',
+          '/pin-lock' => ref.read(appLockProvider) ? null : '/',
+          _ => ref.read(appLockProvider) ? '/pin-lock' : null,
+        },
       };
     },
     errorBuilder: (context, state) =>
@@ -72,6 +80,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/pin-lock', builder: (_, _) => const PinLockScreen()),
       GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
+      GoRoute(
+        path: '/forgot-password',
+        builder: (_, _) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (_, _) => const NotificationsScreen(),
+      ),
+      GoRoute(
+        path: '/time-deposit',
+        builder: (_, _) => const TimeDepositScreen(),
+      ),
       GoRoute(
         path: '/account/:id',
         builder: (_, state) =>
@@ -206,6 +226,13 @@ class _SessionRefresh extends ChangeNotifier {
     );
     ref.listen<bool>(
       openingAdDismissedProvider,
+      (_, _) => notifyListeners(),
+      fireImmediately: false,
+    );
+    // A lock engaged by the background timeout has to re-run the guard, or the
+    // dashboard would stay on screen until the next navigation.
+    ref.listen<bool>(
+      appLockProvider,
       (_, _) => notifyListeners(),
       fireImmediately: false,
     );

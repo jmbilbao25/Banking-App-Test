@@ -77,6 +77,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       borderRadius: BorderRadius.vertical(
                         top: Radius.circular(AppRadius.xl),
                       ),
+                      // One soft shadow, so the sheet reads as sitting over the
+                      // gradient rather than being cut out of it.
+                      boxShadow: [
+                        BoxShadow(
+                          color: tokens.shadow.withValues(alpha: 0.18),
+                          blurRadius: 24,
+                          offset: const Offset(0, -6),
+                        ),
+                      ],
                     ),
                     padding: const EdgeInsets.fromLTRB(
                       Space.x5,
@@ -87,6 +96,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     // Storytelling: the sheet resolves top down, so the eye is
                     // led from the actions to the ledger rather than met by a
                     // finished page.
+                    //
+                    // Order matters here. The ledger sits directly under the
+                    // quick actions, ahead of the Finance Hub, because a home
+                    // screen exists to answer two questions: how much do I have,
+                    // and what just happened to my money. The Finance Hub is a
+                    // set of destinations rather than information, so it cannot
+                    // stand between the customer and their transactions.
                     child: const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -98,13 +114,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         FadeSlideIn(
                           index: 2,
                           offset: _sectionRise,
-                          child: _FinanceHub(),
+                          child: _RecentTransactions(),
                         ),
                         SizedBox(height: Space.x8),
                         FadeSlideIn(
                           index: 4,
                           offset: _sectionRise,
-                          child: _RecentTransactions(),
+                          child: _FinanceHub(),
                         ),
                         SizedBox(height: Space.x8),
                         FadeSlideIn(
@@ -135,10 +151,10 @@ class _TopRegion extends ConsumerWidget {
     final selected = ref.watch(selectedAccountProvider);
     final hidden = ref.watch(preferencesProvider).balancesHidden;
 
+    // No bottom rounding. The sheet below overlaps this region and rounds its
+    // own top, so rounding here too left the gradient's corners visible either
+    // side of the sheet as two small flares.
     return FrostBackdrop(
-      borderRadius: const BorderRadius.vertical(
-        bottom: Radius.circular(AppRadius.xl),
-      ),
       child: SafeArea(
         bottom: false,
         child: Padding(
@@ -168,8 +184,10 @@ class _TopRegion extends ConsumerWidget {
                   GlassIconButton(
                     icon: Icons.notifications_none_rounded,
                     label: 'Notifications',
-                    badge: true,
-                    onTap: () => context.push('/soon/notifications'),
+                    // Requirement 12.16: the badge follows the real unread
+                    // count, so it disappears once the feed is read.
+                    badgeCount: ref.watch(unreadNotificationCountProvider),
+                    onTap: () => context.push('/notifications'),
                   ),
                 ],
               ),
@@ -197,8 +215,13 @@ class _TopRegion extends ConsumerWidget {
                       _AccountChips(accounts: rows),
                       const SizedBox(height: Space.x6),
                       if (active != null) ...[
+                        // The figure below is the selected account's balance,
+                        // not a total across accounts, so the label names the
+                        // account. Calling it "Total balance" while Savings and
+                        // Crypto are visible in the chip row above mislabelled
+                        // the largest number on the screen.
                         Text(
-                          'Total balance',
+                          '${active.name} balance',
                           style: AppType.labelMedium.copyWith(
                             color: Colors.white.withValues(alpha: 0.76),
                           ),
@@ -430,7 +453,12 @@ class _CardsCarousel extends ConsumerWidget {
 
     // Portrait, matching the card face on the Cards screen, so a card is the
     // same object wherever it appears.
-    const thumbWidth = 94.0;
+    //
+    // Deliberately small. At 94 the strip stood 154 logical pixels tall, about a
+    // fifth of the viewport, and pushed the transaction list off the first
+    // screen. Cards are a way in to the Cards screen here, not the subject of
+    // this one, so they earn a thumbnail and no more.
+    const thumbWidth = 54.0;
 
     return SizedBox(
       height: CardFace.heightFor(thumbWidth) + Space.x3,
@@ -504,29 +532,30 @@ class _QuickActions extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: staggered(
+      // Sentence case, like every other label in the app. These four were the
+      // only all caps text in the product, which made the dashboard read as its
+      // own dialect. "Add money" and "Send money" also now match the titles of
+      // the screens they open, so the label the user taps is the label that
+      // greets them.
       const [
         _QuickAction(
-          // DEPOSIT
           icon: Icons.south_west_rounded,
-          label: 'DEPOSIT',
+          label: 'Add money',
           route: '/deposit',
         ),
         _QuickAction(
-          // TRANSFER
           icon: Icons.north_east_rounded,
-          label: 'SEND',
+          label: 'Send money',
           route: '/transfer',
         ),
         _QuickAction(
-          // QR SCANNING
           icon: Icons.qr_code_scanner_rounded,
-          label: 'SCAN',
+          label: 'Scan',
           route: '/qr-scanner',
         ),
         _QuickAction(
-          // HISTORY
           icon: Icons.receipt_long_rounded,
-          label: 'HISTORY',
+          label: 'History',
           route: '/activity',
         ),
       ],
@@ -598,29 +627,23 @@ class _FinanceHub extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
+      // Requirement 12.9: exactly four entries, labelled Savings, Crypto,
+      // Split Bills, and Time Deposit. Cards had a fifth tile here while also
+      // being a shell destination, and a horse racing screen had a sixth.
       const SectionHeader(title: 'Finance Hub'),
       Row(
         children: const [
           Expanded(
             child: HubTile(
-              icon: Icons.credit_card_rounded,
-              label: 'Cards',
-              route: '/cards',
-            ),
-          ),
-          SizedBox(width: Space.x3),
-          Expanded(
-            child: HubTile(
-              icon: Icons.savings_rounded,
+              // One icon weight across the grid. It previously mixed a filled
+              // piggy bank, a hairline currency glyph, a filled people mark and
+              // a filled padlock, which read as four different icon sets.
+              icon: Icons.savings_outlined,
               label: 'Savings',
               route: '/savings',
             ),
           ),
-        ],
-      ),
-      const SizedBox(height: Space.x3),
-      Row(
-        children: const [
+          SizedBox(width: Space.x3),
           Expanded(
             child: HubTile(
               icon: Icons.currency_bitcoin_rounded,
@@ -628,14 +651,6 @@ class _FinanceHub extends StatelessWidget {
               route: '/crypto',
             ),
           ),
-          SizedBox(width: Space.x3),
-          Expanded(
-            child: HubTile(
-              icon: Icons.groups_rounded,
-              label: 'Split Bills',
-              route: '/split-bills',
-            ),
-          ),
         ],
       ),
       const SizedBox(height: Space.x3),
@@ -643,14 +658,18 @@ class _FinanceHub extends StatelessWidget {
         children: const [
           Expanded(
             child: HubTile(
-              icon: Icons.directions_run_rounded,
-              label: 'Netkeiba JRA',
-              route: '/netkeiba',
+              icon: Icons.groups_outlined,
+              label: 'Split Bills',
+              route: '/split-bills',
             ),
           ),
           SizedBox(width: Space.x3),
           Expanded(
-            child: SizedBox(),
+            child: HubTile(
+              icon: Icons.lock_clock_outlined,
+              label: 'Time Deposit',
+              route: '/time-deposit',
+            ),
           ),
         ],
       ),

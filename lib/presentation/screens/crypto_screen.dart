@@ -139,13 +139,13 @@ class _Portfolio extends StatelessWidget {
 }
 
 /// Live valuation of the held positions, on the brand surface.
-class _ValueHeader extends StatelessWidget {
+class _ValueHeader extends ConsumerWidget {
   const _ValueHeader({required this.portfolio});
 
   final CryptoPortfolio portfolio;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return FrostBackdrop(
       borderRadius: const BorderRadius.vertical(
         bottom: Radius.circular(AppRadius.xl),
@@ -196,8 +196,13 @@ class _ValueHeader extends StatelessWidget {
               ],
             ),
             const SizedBox(height: Space.x4),
+            // Requirement 19.8: the provenance line follows the actual source.
+            // Claiming live prices while a build without a market key is serving
+            // generated bars would be the one thing this screen must not do.
             Text(
-              'Quantities held are mock ledger data. Prices are live.',
+              ref.watch(marketDataIsMockProvider)
+                  ? 'Every rate and quantity here is mock data.'
+                  : 'Quantities held are mock ledger data. Prices are live.',
               style: AppType.bodySmall.copyWith(
                 color: Colors.white.withValues(alpha: 0.6),
               ),
@@ -294,28 +299,33 @@ class _CoinRow extends StatelessWidget {
 
 /// Where the numbers came from and how fresh they are. A live figure without a
 /// timestamp is not a live figure.
-class _Provenance extends StatelessWidget {
+class _Provenance extends ConsumerWidget {
   const _Provenance({required this.asOf});
 
   final DateTime? asOf;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final tokens = context.tokens;
+    final isMock = ref.watch(marketDataIsMockProvider);
     return Row(
       children: [
         Icon(
-          Icons.bolt_rounded,
+          isMock ? Icons.science_outlined : Icons.bolt_rounded,
           size: 14,
           color: tokens.textSecondary.withValues(alpha: 0.8),
         ),
         const SizedBox(width: Space.x1),
         Expanded(
           child: Text(
-            asOf == null
-                ? 'Live prices from Twelve Data'
-                : 'Live prices from Twelve Data, quoted '
-                      '${Dates.relative(asOf!).toLowerCase()}',
+            // Requirement 19.8. Naming the venue while serving generated bars
+            // would attribute invented figures to a real market.
+            isMock
+                ? 'Mock rates, generated on this device'
+                : asOf == null
+                      ? 'Live prices from Twelve Data'
+                      : 'Live prices from Twelve Data, quoted '
+                            '${Dates.relative(asOf!).toLowerCase()}',
             style: AppType.bodySmall.copyWith(color: tokens.textSecondary),
           ),
         ),

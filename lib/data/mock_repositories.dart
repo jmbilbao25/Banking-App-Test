@@ -88,6 +88,17 @@ class MockTransactionRepository implements TransactionRepository {
       _source.transactions(accountId: accountId);
 
   @override
+  Future<List<Txn>> fetchTransactionPage({
+    String? accountId,
+    required int offset,
+    required int limit,
+  }) => _source.transactionPage(
+    accountId: accountId,
+    offset: offset,
+    limit: limit,
+  );
+
+  @override
   Future<Txn> fetchTransaction(String id) => _source.transaction(id);
 }
 

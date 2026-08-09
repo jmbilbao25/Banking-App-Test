@@ -82,24 +82,12 @@ class HubScreen extends ConsumerWidget {
               children: const [
                 Expanded(
                   child: HubTile(
-                    icon: Icons.credit_card_rounded,
-                    label: 'Cards',
-                    route: '/cards',
-                  ),
-                ),
-                SizedBox(width: Space.x3),
-                Expanded(
-                  child: HubTile(
-                    icon: Icons.savings_rounded,
+                    icon: Icons.savings_outlined,
                     label: 'Savings',
                     route: '/savings',
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: Space.x3),
-            Row(
-              children: const [
+                SizedBox(width: Space.x3),
                 Expanded(
                   child: HubTile(
                     icon: Icons.currency_bitcoin_rounded,
@@ -107,14 +95,6 @@ class HubScreen extends ConsumerWidget {
                     route: '/crypto',
                   ),
                 ),
-                SizedBox(width: Space.x3),
-                Expanded(
-                  child: HubTile(
-                    icon: Icons.groups_rounded,
-                    label: 'Split Bills',
-                    route: '/split-bills',
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: Space.x3),
@@ -122,14 +102,18 @@ class HubScreen extends ConsumerWidget {
               children: const [
                 Expanded(
                   child: HubTile(
-                    icon: Icons.directions_run_rounded,
-                    label: 'Netkeiba JRA',
-                    route: '/netkeiba',
+                    icon: Icons.groups_outlined,
+                    label: 'Split Bills',
+                    route: '/split-bills',
                   ),
                 ),
                 SizedBox(width: Space.x3),
                 Expanded(
-                  child: SizedBox(),
+                  child: HubTile(
+                    icon: Icons.lock_clock_outlined,
+                    label: 'Time Deposit',
+                    route: '/time-deposit',
+                  ),
                 ),
               ],
             ),
@@ -178,7 +162,7 @@ class HubScreen extends ConsumerWidget {
                                   switch (account.kind) {
                                     AccountKind.wallet =>
                                       Icons.account_balance_wallet_rounded,
-                                    AccountKind.savings => Icons.savings_rounded,
+                                    AccountKind.savings => Icons.savings_outlined,
                                     AccountKind.crypto =>
                                       Icons.currency_bitcoin_rounded,
                                   },

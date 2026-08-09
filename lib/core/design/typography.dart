@@ -128,12 +128,16 @@ abstract final class AppType {
   );
 
   // Numeric, GeistMono.
+  // Requirement 1.8 fixes GeistMono for every monetary figure, and a monospace
+  // face sets digits on a wide fixed advance. Negative tracking pulls the hero
+  // figure back toward the rhythm of a proportional face so it reads as an
+  // amount rather than as a code listing, without leaving the mandated family.
   static final TextStyle numericHero = _style(
     family: mono,
     size: 34,
     weight: 500,
     height: 1.08,
-    letterSpacing: -1.2,
+    letterSpacing: -1.8,
   );
   static final TextStyle numericLarge = _style(
     family: mono,

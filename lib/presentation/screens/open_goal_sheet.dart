@@ -235,7 +235,7 @@ class _OpenGoalSheetState extends ConsumerState<OpenGoalSheet> {
                 // ── Target amount ────────────────────────────────────────
                 _AmountTapField(
                   label: 'Target amount',
-                  helperText: 'Optional — leave blank for open-ended',
+                  helperText: 'Optional. Leave blank for open ended.',
                   value: _targetRaw,
                   onChanged: (v) => setState(() => _targetRaw = v),
                 ),
@@ -245,7 +245,7 @@ class _OpenGoalSheetState extends ConsumerState<OpenGoalSheet> {
                 // ── Initial deposit ──────────────────────────────────────
                 _AmountTapField(
                   label: 'Initial deposit',
-                  helperText: 'Optional — you can add funds any time',
+                  helperText: 'Optional. You can add funds any time.',
                   value: _depositRaw,
                   onChanged: (v) => setState(() => _depositRaw = v),
                 ),

@@ -182,7 +182,10 @@ abstract final class FrostGradients {
     _radial(
       canvas,
       rect,
-      center: Offset(rect.left + rect.width * 0.12, rect.top + rect.height * 0.9),
+      center: Offset(
+        rect.left + rect.width * 0.12,
+        rect.top + rect.height * 0.9,
+      ),
       radius: reach * 0.78,
       stops: const [0, 0.18, 0.35, 0.58, 1],
       colors: [
@@ -198,7 +201,10 @@ abstract final class FrostGradients {
     _radial(
       canvas,
       rect,
-      center: Offset(rect.left + rect.width * 0.96, rect.top + rect.height * 0.04),
+      center: Offset(
+        rect.left + rect.width * 0.96,
+        rect.top + rect.height * 0.04,
+      ),
       radius: reach * 0.72,
       stops: const [0, 0.25, 0.6, 1],
       colors: [
@@ -213,7 +219,10 @@ abstract final class FrostGradients {
     _radial(
       canvas,
       rect,
-      center: Offset(rect.left + rect.width * 0.9, rect.top + rect.height * 0.35),
+      center: Offset(
+        rect.left + rect.width * 0.9,
+        rect.top + rect.height * 0.35,
+      ),
       radius: reach * 0.6,
       stops: const [0, 0.4, 1],
       colors: [
@@ -368,11 +377,15 @@ class GlassPanel extends StatelessWidget {
 
     if (reduceTransparency) return content;
 
-    return ClipRRect(
-      borderRadius: border,
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: content,
+    // Confined to its own layer, so the blur is not re-rasterised every time
+    // something else in the enclosing repaint region changes.
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: border,
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: content,
+        ),
       ),
     );
   }
@@ -384,19 +397,32 @@ class GlassIconButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
-    this.badge = false,
+    this.badgeCount = 0,
     super.key,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  final bool badge;
+
+  /// Unread count rendered on the control. Zero renders no badge.
+  ///
+  /// Requirement 12.16 asks for a count rather than a dot, and requirement 25.4
+  /// requires the indicator to be bound to a real value, so this is a number
+  /// from the repository and never a literal true.
+  final int badgeCount;
+
+  bool get _hasBadge => badgeCount > 0;
+
+  /// Counts above 9 read as `9+`, so the badge never outgrows the control.
+  String get _badgeText => badgeCount > 9 ? '9+' : '$badgeCount';
 
   @override
   Widget build(BuildContext context) => Semantics(
     button: true,
-    label: label,
+    // The count is spoken as part of the name, so a screen reader hears how many
+    // are waiting rather than only that something is.
+    label: _hasBadge ? '$label, $badgeCount unread' : label,
     child: ExcludeSemantics(
       child: SizedBox.square(
         dimension: Layout.minTapTarget,
@@ -413,19 +439,29 @@ class GlassIconButton extends StatelessWidget {
               alignment: Alignment.center,
               children: [
                 Icon(icon, color: Colors.white, size: 20),
-                if (badge)
+                if (_hasBadge)
                   Positioned(
-                    top: 12,
-                    right: 12,
+                    top: 6,
+                    right: 4,
                     child: Container(
-                      width: 8,
-                      height: 8,
+                      constraints: const BoxConstraints(minWidth: 16),
+                      height: 16,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
                       decoration: BoxDecoration(
                         color: Palette.frostIceBlue,
-                        shape: BoxShape.circle,
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
                         border: Border.all(
                           color: Palette.frostBaseTop,
                           width: 1.5,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        _badgeText,
+                        style: AppType.labelSmall.copyWith(
+                          color: Palette.frostBaseTop,
+                          fontSize: 10,
+                          height: 1,
                         ),
                       ),
                     ),
@@ -645,10 +681,16 @@ class SoftCard extends StatelessWidget {
         color: tokens.surfaceRaised,
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(
-          color: tokens.isDark ? tokens.border : tokens.border.withValues(alpha: 0.5),
+          color: tokens.isDark
+              ? tokens.border
+              : tokens.border.withValues(alpha: 0.5),
         ),
         boxShadow: [
-          BoxShadow(color: tokens.shadow, blurRadius: 18, offset: const Offset(0, 8)),
+          BoxShadow(
+            color: tokens.shadow,
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
         ],
       ),
       child: Padding(padding: padding, child: child),

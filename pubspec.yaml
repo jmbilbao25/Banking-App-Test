@@ -18,6 +18,18 @@ dependencies:
   mobile_scanner: ^7.4.0
   qr_flutter: ^4.1.0
   supabase_flutter: ^2.8.0
+  # Persistence_Store. supabase_flutter already pulls shared_preferences in for
+  # its own session storage, so depending on it directly adds no native plugin.
+  shared_preferences: ^2.3.0
+  # Used to store a salted digest of the App_Lock PIN instead of the PIN itself.
+  crypto: ^3.0.6
+  # App_Lock biometric confirmation, with PIN entry as the fallback.
+  local_auth: ^2.3.0
+  # Requirement 17.5 needs a control that opens the operating system settings
+  # when camera permission has been denied. Only openAppSettings is used.
+  permission_handler: ^11.3.1
+  # Requirement 15.11 writes the exported activity file to app storage.
+  path_provider: ^2.1.4
 
 dev_dependencies:
   flutter_test:

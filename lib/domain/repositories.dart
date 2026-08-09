@@ -73,6 +73,17 @@ abstract interface class TransactionRepository {
   /// Reverse chronological. [accountId] null means every account.
   Future<List<Txn>> fetchTransactions({String? accountId});
 
+  /// One page of the reverse chronological list, for requirement 15.10.
+  ///
+  /// Returns at most [limit] rows starting at [offset]. A short page, meaning
+  /// fewer rows than [limit], tells the caller it has reached the end, so no
+  /// separate total count is needed.
+  Future<List<Txn>> fetchTransactionPage({
+    String? accountId,
+    required int offset,
+    required int limit,
+  });
+
   Future<Txn> fetchTransaction(String id);
 }
 

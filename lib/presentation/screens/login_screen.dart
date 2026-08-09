@@ -184,8 +184,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
-                            onPressed: () =>
-                                context.push('/soon/password-reset'),
+                            onPressed: () => context.push('/forgot-password'),
                             style: TextButton.styleFrom(
                               foregroundColor: Palette.frostIcePale,
                             ),
@@ -214,7 +213,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       color: Palette.frostBaseTop,
                                     ),
                                   )
-                                : const Text('Sign in with Password'),
+                                : const Text('Sign in'),
                           ),
                         ),
                         const SizedBox(height: Space.x3),
@@ -238,7 +237,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               padding: const EdgeInsets.symmetric(vertical: 14),
                             ),
                             icon: const Icon(Icons.pin_rounded, size: 18),
-                            label: const Text('Login with 6-Digit PIN Pad'),
+                            label: const Text('Use PIN instead'),
                           ),
                         ),
                       ],

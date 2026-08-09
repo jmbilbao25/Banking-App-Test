@@ -15,16 +15,65 @@ abstract final class MockSeed {
     email: 'ava.mercado@frostbank.app',
     mobile: '+63 917 847 1928',
     memberSince: DateTime(2019, 4, 17),
-    pinCode: '123456',
   );
 
-  /// Sample values the sign in and sign up forms open with. This build is a user
-  /// interface presentation, so the forms accept anything and no credential is
-  /// checked.
+  /// Sample values the sign in and sign up forms open with.
+  ///
+  /// [demoPassword] is not a stored credential. On a fresh install no address has
+  /// a password yet, so the first one entered is adopted, and this constant only
+  /// prefills the field. Requirement 5.9 forbids shipping a real credential, so
+  /// nothing here is checked against a secret held in source.
   static const String demoEmail = 'ava.mercado@frostbank.app';
-  static const String demoPassword = 'frost2026';
+  static const String demoPassword = 'frostbank';
   static const String demoName = 'Ava Mercado';
   static const String demoMobile = '+63 917 847 1928';
+
+  /// Additional seeded profiles, reachable by signing in with their address.
+  /// Names only. Requirement 24.1 asks for locale appropriate full names.
+  static final List<UserProfile> demoDirectory = [
+    UserProfile(
+      id: '00000000-0000-0000-0000-000000000002',
+      fullName: 'An Yujin',
+      email: 'yujin.an@frostbank.app',
+      mobile: '+82 10-1001-0901',
+      memberSince: DateTime(2021, 12, 1),
+    ),
+    UserProfile(
+      id: '00000000-0000-0000-0000-000000000003',
+      fullName: 'Jang Wonyoung',
+      email: 'wonyoung.jang@frostbank.app',
+      mobile: '+82 10-2002-0831',
+      memberSince: DateTime(2021, 12, 1),
+    ),
+    UserProfile(
+      id: '00000000-0000-0000-0000-000000000004',
+      fullName: 'Kim Gaeul',
+      email: 'gaeul.kim@frostbank.app',
+      mobile: '+82 10-3003-0924',
+      memberSince: DateTime(2021, 12, 1),
+    ),
+    UserProfile(
+      id: '00000000-0000-0000-0000-000000000005',
+      fullName: 'Naoi Rei',
+      email: 'rei.naoi@frostbank.app',
+      mobile: '+82 10-4004-0203',
+      memberSince: DateTime(2021, 12, 1),
+    ),
+    UserProfile(
+      id: '00000000-0000-0000-0000-000000000006',
+      fullName: 'Kim Jiwon',
+      email: 'liz.kim@frostbank.app',
+      mobile: '+82 10-5005-1121',
+      memberSince: DateTime(2021, 12, 1),
+    ),
+    UserProfile(
+      id: '00000000-0000-0000-0000-000000000007',
+      fullName: 'Lee Hyunseo',
+      email: 'hyunseo.lee@frostbank.app',
+      mobile: '+82 10-6006-0221',
+      memberSince: DateTime(2021, 12, 1),
+    ),
+  ];
 
   /// Mock data: three accounts with format valid masked identifiers.
   static final List<Account> accounts = [

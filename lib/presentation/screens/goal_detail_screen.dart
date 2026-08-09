@@ -187,7 +187,7 @@ class _GoalHeroHeader extends StatelessWidget {
                   backgroundColor: Colors.white.withValues(alpha: 0.25),
                   valueColor: AlwaysStoppedAnimation<Color>(
                     goal.progress >= 1.0
-                        ? const Color(0xFF4ADE80)
+                        ? context.tokens.success
                         : Colors.white,
                   ),
                 ),
