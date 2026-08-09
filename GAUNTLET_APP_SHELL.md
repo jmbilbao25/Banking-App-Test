@@ -127,6 +127,24 @@ It is what let the fold survive three rounds while the number improved.
 
 ## Result
 
+![The navigation bar as it ships, both tiers](docs/glass/bar.png)
+
+![The bar on a screen, over the transaction list](docs/glass/in-context.png)
+
+The controlled comparison - same backdrop, same renderer, same rectangle, and the only
+difference is which recipe drew the pane. This is what the loop lacked for three
+rounds, and having it is what showed the reference was not the ceiling it was being
+treated as. Over a transaction list the reference bar's transmitted row is a
+colour-fringed smear, and in the light tier its own labels measure 1.00:1.
+
+![Ours against the reference, over the white content sheet](docs/glass/ours-vs-reference-light.png)
+
+![Ours against the reference, over the dark sheet](docs/glass/ours-vs-reference-dark.png)
+
+The band width, which is the change the whole exercise turned on:
+
+![Sweeping the refraction band](docs/glass/band-sweep.png)
+
 Two fresh critics, blind, on four panels differing in one variable - which recipe drew
 the pane - both ranked **ours-dark > ours-light > reference-dark > reference-light**.
 Both of ours above both of the reference's. One picked ours to ship on the grounds that
