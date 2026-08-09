@@ -34,6 +34,17 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
   int? _index;
   bool _revealed = false;
 
+  /// The card whose freeze or thaw is in flight.
+  ///
+  /// This is the input `CardFace.pending` was written for and never received.
+  /// `pendingCardId` was declared on the carousel, threaded down to the face, and
+  /// supplied by nobody, so `_FrostDriveState._nucleation` was unreachable and the
+  /// face sat still between the tap and the repository answering. The frost only
+  /// started once `cardsProvider` was invalidated and the status came back
+  /// changed, which is the wrong moment: the acknowledgment belongs on the frame
+  /// the finger lifts.
+  String? _pendingCardId;
+
   /// Requirement 13.8 holds the full number on screen for 10 seconds and then
   /// returns to the masked rendering, so a revealed card cannot be left visible.
   static const _revealWindow = Duration(seconds: 10);
@@ -43,6 +54,43 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
   void dispose() {
     _remaskTimer?.cancel();
     super.dispose();
+  }
+
+  /// The one path into a freeze or a thaw.
+  ///
+  /// Same shape as [_toggleReveal] and for the same reason: one place asks
+  /// App_Lock, so a second entry point cannot forget to. The pending id is set
+  /// before the await and cleared in a finally, so a failed write leaves the face
+  /// where it started rather than stuck part frozen.
+  Future<void> _toggleFreeze(BankCard card) async {
+    if (_pendingCardId != null) return;
+
+    final okPin = await confirmWithAppLock(
+      context,
+      ref,
+      reason: 'Confirm changing the state of this card.',
+    );
+    if (!okPin || !mounted) return;
+
+    setState(() => _pendingCardId = card.id);
+    try {
+      await ref.read(cardsControllerProvider.notifier).toggleFreeze(card.id);
+    } finally {
+      if (mounted) setState(() => _pendingCardId = null);
+    }
+    if (!mounted) return;
+
+    final state = ref.read(cardsControllerProvider);
+    final message = switch (state) {
+      CardSuccess(:final card) => card.status == CardStatus.frozen
+          ? '${card.label} is now frozen.'
+          : '${card.label} is now active.',
+      CardError(:final message) => message,
+      _ => 'Something went wrong.',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    );
   }
 
   /// The one path in and out of the revealed state.
@@ -147,6 +195,9 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
                   child: CardCarousel(
                     cards: rows,
                     initialIndex: initial,
+                    // The face answers the tap on the frame the finger lifts,
+                    // rather than waiting for the write to come back.
+                    pendingCardId: _pendingCardId,
                     // Turned over only while the reveal is live, so the clock in
                     // requirement 13.8 turns the card back on its own.
                     revealedCardId: _revealed ? card.id : null,
@@ -166,6 +217,21 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
                         _revealed = false;
                       });
                     },
+                  ),
+                ),
+                const SizedBox(height: Space.x5),
+                // Directly under the deck, and that is the whole point of its
+                // position. It used to be the trailing control of the Status row,
+                // roughly 800 logical pixels down, which meant reaching it
+                // scrolled the card off the top of the screen: a 740 millisecond
+                // freeze played in full on a face nobody could see. It is also
+                // now in the thumb zone rather than at the far end of a scroll.
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: Space.x5),
+                  child: _FreezeControl(
+                    card: card,
+                    working: _pendingCardId == card.id,
+                    onPressed: () => _toggleFreeze(card),
                   ),
                 ),
                 const SizedBox(height: Space.x6),
@@ -260,72 +326,9 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
                                   : context.tokens.success,
                             ),
                           ),
-                          trailing: Pressable(
-                            onTap: () async {
-                              final okPin = await confirmWithAppLock(
-                                context,
-                                ref,
-                                reason:
-                                    'Confirm changing the state of this card.',
-                              );
-                              if (!okPin || !context.mounted) return;
-
-                              final controller = ref.read(
-                                cardsControllerProvider.notifier,
-                              );
-                              await controller.toggleFreeze(card.id);
-                              if (!context.mounted) return;
-
-                              final state = ref.read(cardsControllerProvider);
-                              final message = switch (state) {
-                                CardSuccess(:final card) =>
-                                  card.status == CardStatus.frozen
-                                      ? '${card.label} is now frozen.'
-                                      : '${card.label} is now active.',
-                                CardError(:final message) => message,
-                                _ => 'Something went wrong.',
-                              };
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(message),
-                                  duration: const Duration(seconds: 2),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: Space.x3,
-                                vertical: Space.x1 + 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: context.tokens.interactiveSecondary,
-                                borderRadius: AppRadius.all(AppRadius.pill),
-                                border: Border.all(color: context.tokens.border),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    card.status == CardStatus.frozen
-                                        ? Icons.lock_open_rounded
-                                        : Icons.ac_unit_rounded,
-                                    size: 14,
-                                    color: context.tokens.accent,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    card.status == CardStatus.frozen
-                                        ? 'Unfreeze'
-                                        : 'Freeze',
-                                    style: AppType.labelSmall.copyWith(
-                                      color: context.tokens.accent,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
+                          // No control here any more. The action lives under the
+                          // deck where the animation it triggers is visible, and
+                          // two buttons for one intent is worse than a walk.
                         ),
                       ),
                     ],
@@ -396,4 +399,126 @@ class _DetailSkeleton extends StatelessWidget {
           ),
         ),
       );
+}
+
+
+/// Freeze and unfreeze, directly under the deck.
+///
+/// Full width rather than a pill in a row, because it is the primary action on
+/// this screen and it now has to look like one. Its whole state is on its face:
+/// what it will do, what it is doing, and what the card currently is.
+///
+/// The label is the action, never the state, so the button never reads as a
+/// status badge you could mistake for a control. The card behind it carries the
+/// state, twice: the frost itself, and the word FROZEN on the face for anyone who
+/// cannot use the frost to tell.
+class _FreezeControl extends StatelessWidget {
+  const _FreezeControl({
+    required this.card,
+    required this.working,
+    required this.onPressed,
+  });
+
+  final BankCard card;
+
+  /// A write is in flight. The control holds its position and says so rather than
+  /// disappearing or letting a second tap through.
+  final bool working;
+
+  final VoidCallback onPressed;
+
+  bool get _frozen => card.status == CardStatus.frozen;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    final label = working
+        ? (_frozen ? 'Unfreezing card' : 'Freezing card')
+        : (_frozen ? 'Unfreeze card' : 'Freeze card');
+
+    return Semantics(
+      button: true,
+      enabled: !working,
+      label: label,
+      child: ExcludeSemantics(
+        child: Pressable(
+          onTap: working ? null : onPressed,
+          borderRadius: AppRadius.pill,
+          haptic: false,
+          child: SizedBox(
+            // Above the 48 floor both platforms ask for, and the same height as
+            // the primary action on every task screen.
+            height: Layout.minTapTarget + Space.x1,
+            width: double.infinity,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: AppRadius.all(AppRadius.pill),
+                // Frozen reads cold and recessed, active reads warm and raised,
+                // so the button's own surface says which way the card currently
+                // sits before the label is read.
+                color: _frozen
+                    ? tokens.info.withValues(alpha: 0.12)
+                    : tokens.interactiveSecondary,
+                border: Border.all(
+                  color: _frozen
+                      ? tokens.info.withValues(alpha: 0.45)
+                      : tokens.border,
+                ),
+              ),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // State transition: the glyph swaps on the same band as the
+                    // frost it triggers, so the control and the card read as one
+                    // event rather than two.
+                    AnimatedSwitcher(
+                      duration: Motion.resolve(context, Motion.short),
+                      switchInCurve: Motion.standard,
+                      switchOutCurve: Motion.standard,
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: ScaleTransition(scale: animation, child: child),
+                      ),
+                      child: working
+                          ? SizedBox.square(
+                              key: const ValueKey('working'),
+                              dimension: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: _frozen
+                                    ? tokens.info
+                                    : tokens.interactivePrimary,
+                              ),
+                            )
+                          : Icon(
+                              _frozen
+                                  ? Icons.lock_open_rounded
+                                  : Icons.ac_unit_rounded,
+                              key: ValueKey(_frozen),
+                              size: 18,
+                              color: _frozen
+                                  ? tokens.info
+                                  : tokens.interactivePrimary,
+                            ),
+                    ),
+                    const SizedBox(width: Space.x2),
+                    Text(
+                      label,
+                      style: AppType.labelLarge.copyWith(
+                        color: _frozen
+                            ? tokens.info
+                            : tokens.interactivePrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

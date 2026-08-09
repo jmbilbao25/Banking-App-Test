@@ -63,22 +63,26 @@ void main() {
                     // its box from its parent exactly as the front does, because
                     // the two swap inside a FlipCard and a back that sized itself
                     // would change shape halfway through the turn.
+                    // Frozen at full size, deliberately. This is the case that
+                    // can actually fail: frost is pale, the digits are light, and
+                    // the only text in the application that sits behind App_Lock
+                    // has to stay readable through it. An active card back cannot
+                    // catch that regression.
                     SizedBox(
                       width: 248,
                       height: CardFace.heightFor(248),
                       child: CardBackFace(
-                        card: card('card_001', CardNetwork.visa, CardStatus.active),
+                        card: card('card_003', CardNetwork.visa, CardStatus.frozen),
                       ),
                     ),
                     const SizedBox(height: Space.x5),
-                    // Two more ids, so the hash lands on the other colourways and
-                    // the layout is checked against a frozen face as well.
+                    // Two more ids, so the hash lands on the other colourways.
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         for (final entry in const [
                           ('card_002', CardNetwork.mastercard, CardStatus.active),
-                          ('card_003', CardNetwork.visa, CardStatus.frozen),
+                          ('card_001', CardNetwork.visa, CardStatus.active),
                         ]) ...[
                           SizedBox(
                             width: 132,

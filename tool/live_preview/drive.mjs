@@ -227,6 +227,9 @@ for (const step of script) {
   if (step.click) await click(step.click[0], step.click[1], { label: step.label });
   if (step.tap) await clickLabel(step.tap, { exact: step.exact });
   if (step.type !== undefined) await type(step.type);
+  if (step.eval) {
+    console.log(`eval -> ${JSON.stringify(await evaluate(step.eval))}`);
+  }
   if (step.dump) {
     const nodes = JSON.parse((await semantics()) || '[]');
     console.log(`--- semantics (${nodes.length}) ---`);
