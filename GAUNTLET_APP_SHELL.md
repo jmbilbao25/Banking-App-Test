@@ -311,18 +311,43 @@ Recorded because the second critic was right about it and it is not fixed.
   settle it.
 - **The tint is a neutral veil, not a coloured medium.** It reduces the backdrop's
   chroma slightly instead of adding any, so the material dulls rather than tints.
-- **The material has no touch response.** `LiquidGlassTouch` / `LiquidGlassFlex` is
-  plumbed through `LiquidGlass` and unused: press-to-compress with a refraction boost,
-  which is the half of "liquid" that no still frame in this exercise has tested. It is
-  not wired because it cannot be validated here - there is no way to capture motion in
-  this environment - and shipping an unvalidated feel at the end of a long session is
-  worse than naming it. The selection capsule does already carry squash-and-stretch on
-  travel; what it lacks against the package's own `stretch` jelly is velocity-driven
-  load and inertial recoil.
+- **The bar's press cue is a content scale, not a glass one.** Pressing an item shrinks
+  the glyph and its label; the surface itself does not yield. On a bar whose whole
+  proposition is glass that is the wrong grammar, and it is the clearest remaining gap.
+  Fixing it properly needs a lens per slot, which is five more lenses on one bar, so it
+  is deferred as a cost question rather than an unknown.
 
-The first two are honest limits of the current geometry and staging. The last two are
-the real remaining gaps against Apple's material, and the touch response is the one
-most likely to change how alive it feels.
+The first two are honest limits of the current geometry and staging.
+
+## Two claims from round 5 that were wrong
+
+Both were mine, and both were stated confidently enough to be worth retracting in
+writing.
+
+**"The material has no touch response, and it cannot be validated here."** Neither
+half held. `LiquidGlassFlex.subtle()` is already wired, on the notification button in
+`widgets/brand.dart` - a 48 pixel square lens, which is exactly the surface class it
+belongs on, and the comment there already makes the argument: the pane gives under the
+finger, which is the one thing a piece of glass does that a tinted rectangle cannot.
+And the validation excuse was worse: a press is a *steady state*, not motion. The
+deformation springs to a value and holds for as long as the finger is down, so it
+photographs exactly as well as a resting frame. Only the release wobble is transient.
+`.work/press.sh` now holds the mouse down and shoots, which took about as long to
+write as the paragraph explaining why it was impossible.
+
+Measured with it: the bar's press response is localised to the slot touched - peak
+difference 164 inside it, **exactly 0.0 in all four other slots and exactly 0.0 in the
+backdrop above the bar**. So the cue is clean and leaks nowhere. It is just the wrong
+kind of cue: `Pressable` scales the glyph and label, which is a Material response
+wearing a glass bar.
+
+**"Wire press-to-compress on the bar."** This was on the round's task list and is the
+wrong change. The pane is one lens 350 pixels wide carrying five items, so a
+pane-level flex would deform the whole bar because one fifth of it was touched, and
+`childFollow` - which defaults to fully rubbery and which the package documents as
+wanting to be zero for dense text - would stretch all five labels. Touch flex belongs
+on small discrete controls, which is where the app already has it. Not done, on
+purpose.
 
 ## Caveat on the renderer
 
