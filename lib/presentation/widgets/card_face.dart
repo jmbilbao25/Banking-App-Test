@@ -747,10 +747,6 @@ class _CardFacePainter extends CustomPainter {
   /// Reused between frames rather than allocated in every one. The painter now
   /// outlives the frame it was built for, so it can own its scratch geometry.
   ///
-  /// Two paths, not one reset twice: a path handed to `drawPath` is still owed to
-  /// the raster thread when `paint` returns, so mutating it again in the same
-  /// frame is not safe.
-  final Path _band = Path();
   final Path _needlePath = Path();
 
   /// Needle tips, as a flat xy buffer for one batched `drawRawPoints`. Grown once
@@ -923,74 +919,87 @@ class _CardFacePainter extends CustomPainter {
     final t = _frost.clamp(0.0, 1.0);
     final thaw = _thawing;
 
-    // The advancing front, following the card's own outline.
+    // The advancing front.
     //
-    // This replaces a radial gradient centred on the face. A circle is the wrong
-    // shape for this: the card is portrait at 0.66, so a circular front reached
-    // the long edges while the short ones were still clear, and the ice read as a
-    // disc laid on a card rather than as a card freezing. Real ice creeps inward
-    // from the whole rim at once, parallel to the edge it started from.
+    // Soft, and elliptical rather than circular. Two earlier passes got this
+    // wrong in opposite directions. A plain radial gradient centred on the face
+    // is circular, so on a card that is half again as tall as it is wide the
+    // front reached the long edges while the short ones were still clear, and the
+    // ice read as a disc laid on a card. Replacing it with real geometry, the card
+    // outline minus a shrinking rounded rectangle, fixed the shape and introduced
+    // something worse: an even-odd fill has a crisp boundary, so mid freeze the
+    // card carried a hard rectangle outline across its middle that read as a
+    // misplaced border rather than as ice.
     //
-    // Built as one even-odd path: the card outline, minus a rounded rectangle
-    // that shrinks as the freeze advances. One fill, one shader, and the band it
-    // leaves is the rime as well, so this layer replaces two.
-    final outline = RRect.fromRectAndRadius(rect, Radius.circular(radius));
-    // Half the short side is enough to close the gap in the middle. Eased so the
-    // edge is already cold early and the last of the middle takes its time.
-    final reach = size.width * 0.52 * Motion.emphasized.transform(t);
-    final open = rect.deflate(reach);
+    // A gradient cannot have a hard edge, and a transform can give it the card's
+    // proportion. The matrix compresses the gradient's y axis by the card's aspect
+    // ratio, which turns the circle into an ellipse that reaches all four edges at
+    // the same moment while staying soft everywhere.
+    final aspect = size.width / size.height;
+    final lens = Matrix4.identity();
+    // Scale y about the centre of the face, so the ellipse stays centred.
+    lens.storage[5] = aspect;
+    lens.storage[13] = rect.center.dy * (1 - aspect);
 
-    final band = _band..reset();
-    band
-      ..addRRect(outline)
-      ..fillType = ui.PathFillType.evenOdd;
-    final closed = open.width <= 1 || open.height <= 1;
-    if (!closed) {
-      band.addRRect(
-        RRect.fromRectAndRadius(
-          open,
-          // The hole keeps a corner radius proportional to what is left of it, so
-          // the opening stays the shape of the card instead of turning into a
-          // stadium as it narrows.
-          Radius.circular(math.max(radius - reach * 0.6, 2)),
-        ),
-      );
-    }
-    canvas.drawPath(
-      band,
+    // Where the front currently sits, from just outside the face to closed. Eased
+    // so the edge is cold early and the last of the middle takes its time.
+    final clear = ui
+        .lerpDouble(1.02, 0, Curves.easeIn.transform(t))!
+        .clamp(0.0, 0.99);
+    // Brightest halfway through and exactly zero at both rest states, so the band
+    // crawls inward on a freeze, retreats outward on a thaw, and never shows on a
+    // settled card.
+    final front = math.sin(math.pi * t);
+    final haze = 0.4 * t;
+    // The centre closing the last of the gap. Cubed, so it is still clearly open
+    // through the middle of the run and only fills as the face locks.
+    final core = haze * t * t;
+    canvas.drawRect(
+      rect,
       Paint()
         ..shader = ui.Gradient.radial(
           rect.center,
-          size.width * 0.9,
+          // Past the corner distance in gradient space, which is 0.707 of the
+          // width once y is compressed, so the corners ice over too.
+          size.width * 0.72,
           [
-            // Thin over the middle so the brand mark keeps something dark to sit
-            // against, thickening toward the rim where the ice is oldest.
-            pale.withValues(alpha: 0.16 * t),
-            ice.withValues(alpha: 0.46 * t),
+            pale.withValues(alpha: core),
+            ice.withValues(alpha: (haze + 0.34 * front).clamp(0.0, 1.0)),
+            pale.withValues(alpha: haze),
           ],
-          const [0.15, 1],
+          [clear, math.min(clear + 0.06, 0.995), 1],
+          ui.TileMode.clamp,
+          lens.storage,
         ),
     );
 
-    // The freeze front itself, riding the edge of the opening.
+    // Rime thickening along the milled edge, graded outward rather than blurred.
     //
-    // Brightest halfway through the run and gone at both rest states, so it
-    // crawls inward on a freeze, retreats outward on a thaw, and never sits on a
-    // settled card. Drawn on the opening rather than across the face, which is
-    // what makes it read as a growing edge instead of a pulse.
-    final front = math.sin(math.pi * t);
-    if (!closed && front > 0.02) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          open,
-          Radius.circular(math.max(radius - reach * 0.6, 2)),
+    // This one is allowed to be a stroke: it sits on the card's own border, where
+    // there is already a hard edge, so it reads as the edge icing over instead of
+    // as a shape drawn on the face. Taken as a share of the width, so a thumbnail
+    // and a card in the hand ice to the same proportion.
+    final thickness = size.width * (0.008 + 0.026 * t);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        rect.deflate(thickness / 2),
+        Radius.circular(radius),
+      ),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = thickness
+        ..shader = ui.Gradient.radial(
+          rect.center,
+          size.width * 0.72,
+          [
+            ice.withValues(alpha: 0),
+            ice.withValues(alpha: 0.42 * Motion.standard.transform(t)),
+          ],
+          const [0.5, 1],
+          ui.TileMode.clamp,
+          lens.storage,
         ),
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = size.width * 0.012
-          ..color = ice.withValues(alpha: 0.5 * front),
-      );
-    }
+    );
 
     // The sheet, and the layer that does the actual work of reading as frozen.
     //
@@ -1060,7 +1069,7 @@ class _CardFacePainter extends CustomPainter {
         final arm =
             crystal.r *
             size.width *
-            0.68 *
+            0.5 *
             Motion.settle.transform(local).clamp(0.0, 1.08);
         // Below a pixel there is nothing to see, and a round cap would leave a
         // dot where no crystal has grown yet.
@@ -1110,7 +1119,7 @@ class _CardFacePainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeCap = StrokeCap.round
             ..strokeWidth = line * 2.8
-            ..color = pale.withValues(alpha: 0.26 * lit),
+            ..color = pale.withValues(alpha: 0.2 * lit),
         );
         canvas.drawPath(
           path,
@@ -1121,7 +1130,7 @@ class _CardFacePainter extends CustomPainter {
             // Held down from the value an earlier pass used. Bright white line
             // work on a smooth face reads as a decal stuck on the card; the same
             // shape a little dimmer reads as crystal in the ice above it.
-            ..color = ice.withValues(alpha: 0.56 * lit),
+            ..color = ice.withValues(alpha: 0.38 * lit),
         );
 
         // Light catching the crystal tips, as the ice locks.
