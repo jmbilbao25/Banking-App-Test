@@ -30,6 +30,7 @@ dependencies:
   permission_handler: ^11.3.1
   # Requirement 15.11 writes the exported activity file to app storage.
   path_provider: ^2.1.4
+  liquid_glass_easy: ^3.5.0
 
 dev_dependencies:
   flutter_test:

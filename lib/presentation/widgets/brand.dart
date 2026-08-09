@@ -3,9 +3,12 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
+import '../../core/design/glass.dart';
 import '../../core/design/tokens.dart';
 import '../../core/design/typography.dart';
+import 'liquid_glass.dart';
 
 /// Geometry of the FrostBank mark, transcribed one to one from the source SVG.
 ///
@@ -337,58 +340,36 @@ class FrostLockup extends StatelessWidget {
   }
 }
 
-/// Frosted glass surface used on brand backdrops. Falls back to a solid fill
-/// when the platform asks for reduced transparency.
+/// Frosted glass surface used on brand backdrops.
+///
+/// The same material as the application chrome, at the panel tier: see [Glass]
+/// for what the tiers change and why. It used to be a flat sigma 16
+/// [BackdropFilter] with a white fill and a white border, which meant the
+/// interface was made of two visibly different glasses depending on whether you
+/// were looking at a card or at the navigation bar. It is now one.
+///
+/// Reduced transparency is handled by [LiquidGlass] itself, which collapses to an
+/// opaque fill.
 class GlassPanel extends StatelessWidget {
   const GlassPanel({
     required this.child,
     this.padding = const EdgeInsets.all(Space.x5),
     this.radius = AppRadius.xl,
-    this.tint = 0.1,
     super.key,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
   final double radius;
-  final double tint;
 
   @override
-  Widget build(BuildContext context) {
-    final reduceTransparency =
-        MediaQuery.maybeOf(context)?.highContrast ?? false;
-    final border = BorderRadius.circular(radius);
-
-    final content = DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: border,
-        color: Colors.white.withValues(alpha: reduceTransparency ? 0.22 : tint),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
-        boxShadow: [
-          BoxShadow(
-            color: Palette.frostInk.withValues(alpha: 0.24),
-            blurRadius: 28,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
+  Widget build(BuildContext context) => RepaintBoundary(
+    child: LiquidGlass(
+      radius: radius,
+      recipe: Glass.panelOf(context),
       child: Padding(padding: padding, child: child),
-    );
-
-    if (reduceTransparency) return content;
-
-    // Confined to its own layer, so the blur is not re-rasterised every time
-    // something else in the enclosing repaint region changes.
-    return RepaintBoundary(
-      child: ClipRRect(
-        borderRadius: border,
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: content,
-        ),
-      ),
-    );
-  }
+    ),
+  );
 }
 
 /// Small frosted control on a brand backdrop, sized for a 48 pixel target.
@@ -426,47 +407,61 @@ class GlassIconButton extends StatelessWidget {
     child: ExcludeSemantics(
       child: SizedBox.square(
         dimension: Layout.minTapTarget,
-        child: Material(
-          color: Colors.white.withValues(alpha: 0.12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            side: BorderSide(color: Colors.white.withValues(alpha: 0.24)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Icon(icon, color: Colors.white, size: 20),
-                if (_hasBadge)
-                  Positioned(
-                    top: 6,
-                    right: 4,
-                    child: Container(
-                      constraints: const BoxConstraints(minWidth: 16),
-                      height: 16,
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      decoration: BoxDecoration(
-                        color: Palette.frostIceBlue,
-                        borderRadius: BorderRadius.circular(AppRadius.pill),
-                        border: Border.all(
-                          color: Palette.frostBaseTop,
-                          width: 1.5,
+        child: LiquidGlass(
+          radius: AppRadius.md,
+          // Always the dark recipe. This control only ever sits on the brand
+          // backdrop, in both themes, so a pane that followed the platform
+          // brightness would turn pale and disappear into a navy gradient.
+          recipe: Glass.dark.panel,
+          // Feedback: the pane gives under the finger and springs back, which is
+          // the one thing a piece of glass does that a tinted rectangle cannot.
+          // The lens allocates nothing for this until the first touch.
+          flex: const LiquidGlassFlex.subtle(),
+          child: Material(
+            // The pane is the surface now, so the Material is here only to host
+            // the ink response. The theme sets NoSplash, so nothing is drawn.
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              // Expanded on purpose. The pane takes its size from the box above
+              // it, but inside the pane the content is what measures, so without
+              // this the whole control collapses to the width of the glyph and
+              // stops being a 48 pixel target.
+              child: SizedBox.expand(
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(icon, color: Colors.white, size: 20),
+                    if (_hasBadge)
+                      Positioned(
+                        top: 6,
+                        right: 4,
+                        child: Container(
+                          constraints: const BoxConstraints(minWidth: 16),
+                          height: 16,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            color: Palette.frostIceBlue,
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                            border: Border.all(
+                              color: Palette.frostBaseTop,
+                              width: 1.5,
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            _badgeText,
+                            style: AppType.labelSmall.copyWith(
+                              color: Palette.frostBaseTop,
+                              fontSize: 10,
+                              height: 1,
+                            ),
+                          ),
                         ),
                       ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        _badgeText,
-                        style: AppType.labelSmall.copyWith(
-                          color: Palette.frostBaseTop,
-                          fontSize: 10,
-                          height: 1,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
+                  ],
+                ),
+              ),
             ),
           ),
         ),

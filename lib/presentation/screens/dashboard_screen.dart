@@ -77,6 +77,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       borderRadius: BorderRadius.vertical(
                         top: Radius.circular(AppRadius.xl),
                       ),
+                      // A hairline along the top edge, so the sheet has a
+                      // silhouette of its own. Without it the edge only shows
+                      // where the backdrop behind it happens to be lighter, and
+                      // the backdrop's glow sits on the left: the top left corner
+                      // read crisply while the top right dissolved into navy,
+                      // which made a symmetrical shape look mis-clipped.
+                      border: Border(
+                        top: BorderSide(
+                          color: tokens.textOnBrand.withValues(alpha: 0.1),
+                        ),
+                      ),
                       // One soft shadow, so the sheet reads as sitting over the
                       // gradient rather than being cut out of it.
                       boxShadow: [
@@ -191,8 +202,11 @@ class _TopRegion extends ConsumerWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: Space.x4),
-              const _SearchField(),
+              // No search field here. It was a second entry point to the same
+              // query the Activity screen owns, one tap away in the bar below,
+              // and it cost 60 logical pixels at the top of the most visited
+              // screen. The ledger it was pushing under the fold is the thing
+              // this screen is for.
               const SizedBox(height: Space.x6),
               AsyncSection<List<Account>>(
                 value: accounts,
@@ -200,7 +214,11 @@ class _TopRegion extends ConsumerWidget {
                 skeleton: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
-                    SkeletonBlock(width: 220, height: 34, radius: AppRadius.pill),
+                    SkeletonBlock(
+                      width: 220,
+                      height: 34,
+                      radius: AppRadius.pill,
+                    ),
                     SizedBox(height: Space.x6),
                     SkeletonBlock(width: 200, height: 40),
                     SizedBox(height: Space.x3),
@@ -276,68 +294,6 @@ class _TopRegion extends ConsumerWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SearchField extends ConsumerStatefulWidget {
-  const _SearchField();
-
-  @override
-  ConsumerState<_SearchField> createState() => _SearchFieldState();
-}
-
-class _SearchFieldState extends ConsumerState<_SearchField> {
-  final TextEditingController _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _search(String value) {
-    if (value.trim().isEmpty) return;
-    ref.read(txnFilterProvider.notifier).setQuery(value.trim());
-    context.go('/activity');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // The search field sits on the brand surface, so its text is white rather
-    // than theme coloured.
-    final border = OutlineInputBorder(
-      borderRadius: AppRadius.all(AppRadius.pill),
-      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
-    );
-
-    return TextField(
-      controller: _controller,
-      textInputAction: TextInputAction.search,
-      onSubmitted: _search,
-      cursorColor: Colors.white,
-      style: AppType.bodyMedium.copyWith(color: Colors.white),
-      decoration: InputDecoration(
-        hintText: 'Search transactions',
-        hintStyle: AppType.bodyMedium.copyWith(
-          color: Colors.white.withValues(alpha: 0.56),
-        ),
-        filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.1),
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(vertical: Space.x3),
-        prefixIcon: Icon(
-          Icons.search_rounded,
-          color: Colors.white.withValues(alpha: 0.7),
-          size: 20,
-        ),
-        border: border,
-        enabledBorder: border,
-        focusedBorder: OutlineInputBorder(
-          borderRadius: AppRadius.all(AppRadius.pill),
-          borderSide: const BorderSide(color: Palette.frostIcePale, width: 2),
         ),
       ),
     );
@@ -578,7 +534,8 @@ class _QuickAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final isBranch = route.startsWith('/activity') || route.startsWith('/cards');
+    final isBranch =
+        route.startsWith('/activity') || route.startsWith('/cards');
     return Pressable(
       onTap: () => isBranch ? context.go(route) : context.push(route),
       semanticLabel: label.toLowerCase(),
@@ -693,7 +650,11 @@ class HubTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final isBranch = route == '/cards' || route == '/activity' || route == '/hub' || route == '/profile';
+    final isBranch =
+        route == '/cards' ||
+        route == '/activity' ||
+        route == '/hub' ||
+        route == '/profile';
     return Pressable(
       onTap: () => isBranch ? context.go(route) : context.push(route),
       semanticLabel: label,
@@ -738,9 +699,24 @@ class _RecentTransactions extends ConsumerWidget {
       children: [
         SectionHeader(
           title: 'Transactions',
+          // Deliberately not the accent. The accent marks what is currently
+          // active, and this is a link to another screen. Left at the theme's
+          // accent it was the most saturated pixel on the dashboard, so the
+          // strongest colour on a screen about money was spent on a secondary
+          // control and it beat the balance for attention. The affordance comes
+          // from the chevron and from sitting on the heading row.
           action: TextButton(
             onPressed: () => context.go('/activity'),
-            child: const Text('View all'),
+            style: TextButton.styleFrom(
+              foregroundColor: context.tokens.textSecondary,
+            ),
+            child: const Row(
+              children: [
+                Text('View all'),
+                SizedBox(width: Space.x1),
+                Icon(Icons.chevron_right_rounded, size: 16),
+              ],
+            ),
           ),
         ),
         AsyncSection<List<Txn>>(
@@ -802,53 +778,53 @@ class _Offers extends ConsumerWidget {
                     radius: AppRadius.lg,
                     padding: const EdgeInsets.all(Space.x4),
                     child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            promo.title,
-                            style: AppType.titleMedium.copyWith(
-                              color: Colors.white,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          promo.title,
+                          style: AppType.titleMedium.copyWith(
+                            color: Colors.white,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: Space.x2),
+                        Expanded(
+                          child: Text(
+                            promo.body,
+                            style: AppType.bodySmall.copyWith(
+                              color: Colors.white.withValues(alpha: 0.86),
                             ),
-                            maxLines: 2,
+                            maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: Space.x2),
-                          Expanded(
+                        ),
+                        const SizedBox(height: Space.x2),
+                        Pressable(
+                          onTap: () => context.push('/soon/offers'),
+                          semanticLabel: '${promo.actionLabel}, ${promo.title}',
+                          borderRadius: AppRadius.pill,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: Space.x4,
+                              vertical: Space.x2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: AppRadius.all(AppRadius.pill),
+                            ),
                             child: Text(
-                              promo.body,
-                              style: AppType.bodySmall.copyWith(
-                                color: Colors.white.withValues(alpha: 0.86),
-                              ),
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(height: Space.x2),
-                          Pressable(
-                            onTap: () => context.push('/soon/offers'),
-                            semanticLabel: '${promo.actionLabel}, ${promo.title}',
-                            borderRadius: AppRadius.pill,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: Space.x4,
-                                vertical: Space.x2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: AppRadius.all(AppRadius.pill),
-                              ),
-                              child: Text(
-                                promo.actionLabel,
-                                style: AppType.labelMedium.copyWith(
-                                  color: Palette.frostBaseTop,
-                                ),
+                              promo.actionLabel,
+                              style: AppType.labelMedium.copyWith(
+                                color: Palette.frostBaseTop,
                               ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  );
+                  ),
+                );
               },
             ),
           ),

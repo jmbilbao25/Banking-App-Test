@@ -25,6 +25,7 @@ class CardCarousel extends StatefulWidget {
     this.initialIndex = 0,
     this.showDots = true,
     this.pendingCardId,
+    this.revealedCardId,
     this.dotColor,
     this.dotTrackColor,
     super.key,
@@ -46,6 +47,14 @@ class CardCarousel extends StatefulWidget {
   /// The card with a freeze or a thaw in flight, if any. Its face acknowledges
   /// the tap while the write is out, so the wait is not dead time.
   final String? pendingCardId;
+
+  /// The card currently turned over to show its details, if any.
+  ///
+  /// Set by the screen, and only after App_Lock has confirmed, so the deck cannot
+  /// decide to show a number on its own. Requirement 13.8 puts a clock on the
+  /// reveal, and when that clock runs out this goes back to null and the card
+  /// turns back by itself.
+  final String? revealedCardId;
 
   final Color? dotColor;
   final Color? dotTrackColor;
@@ -171,6 +180,7 @@ class _CardCarouselState extends State<CardCarousel> {
                           index: index,
                           card: card,
                           pending: card.id == widget.pendingCardId,
+                          revealed: card.id == widget.revealedCardId,
                         ),
                       ),
                     ),
@@ -257,23 +267,30 @@ class _SheenCard extends StatelessWidget {
     required this.index,
     required this.card,
     required this.pending,
+    required this.revealed,
   });
 
   final ValueNotifier<double> page;
   final int index;
   final BankCard card;
   final bool pending;
+  final bool revealed;
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<double>(
     valueListenable: page,
     builder: (context, value, _) {
       final delta = (value - index).clamp(-1.0, 1.0);
-      return CardFace(
-        card: card,
-        sheen: Motion.amount(context, delta),
-        lift: (1 - delta.abs() * 0.6).clamp(0.25, 1.0),
-        pending: pending,
+      final lift = (1 - delta.abs() * 0.6).clamp(0.25, 1.0);
+      return FlipCard(
+        showBack: revealed,
+        front: CardFace(
+          card: card,
+          sheen: Motion.amount(context, delta),
+          lift: lift,
+          pending: pending,
+        ),
+        back: CardBackFace(card: card, lift: lift),
       );
     },
   );
