@@ -46,6 +46,25 @@ class _FadeSlideInState extends State<FadeSlideIn>
     duration: widget.duration,
   );
 
+  /// Built once, not per build. A [CurvedAnimation] created inside `build`
+  /// attaches a listener to the controller that is never detached, so a widget
+  /// that rebuilds while animating accumulates them.
+  late final CurvedAnimation _curved = CurvedAnimation(
+    parent: _controller,
+    curve: widget.curve,
+  );
+
+  /// The fade, clamped to the legal range.
+  ///
+  /// Callers may pass a curve that overshoots - [Motion.settle] is easeOutBack -
+  /// and where an opacity above one used to be clipped by a `clamp` in the
+  /// builder, it now reaches a render object that asserts on it.
+  late final Animation<double> _opacity = _curved.drive(_ClampUnit());
+
+  late final Animation<double> _scale = _curved.drive(
+    Tween<double>(begin: widget.scaleFrom, end: 1),
+  );
+
   bool _started = false;
 
   @override
@@ -70,34 +89,48 @@ class _FadeSlideInState extends State<FadeSlideIn>
 
   @override
   void dispose() {
+    _curved.dispose();
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final curved = CurvedAnimation(parent: _controller, curve: widget.curve);
-
-    return AnimatedBuilder(
-      animation: curved,
+    // The fade and the scale drive their render objects directly instead of being
+    // rebuilt per frame, and that is the whole point of this shape.
+    //
+    // [staggered] puts one of these around every row of a screen, so an entrance
+    // is not one animation but a dozen running at once. Each one used to rebuild
+    // an [Opacity] every frame, and an Opacity between 0 and 1 allocates a save
+    // layer the size of its child: a dozen offscreen buffers per frame, on the
+    // frames where the user is also waiting for the screen's first data. A
+    // [FadeTransition] holds one opacity layer and drops it entirely at either end
+    // of the range, so a settled row costs nothing at all.
+    //
+    // The translate keeps a builder because the offset is in logical pixels and
+    // [SlideTransition] is a fraction of the child's size. It is cheap: a
+    // Transform is a matrix on the canvas, not a layer.
+    Widget content = AnimatedBuilder(
+      animation: _curved,
       child: widget.child,
-      builder: (context, child) {
-        final t = curved.value;
-        final remaining = 1 - t;
-        var content = Transform.translate(
-          offset: widget.offset * remaining,
-          child: child,
-        );
-        if (widget.scaleFrom != 1) {
-          content = Transform.scale(
-            scale: widget.scaleFrom + (1 - widget.scaleFrom) * t,
-            child: content,
-          );
-        }
-        return Opacity(opacity: t.clamp(0, 1), child: content);
-      },
+      builder: (context, child) => Transform.translate(
+        offset: widget.offset * (1 - _curved.value),
+        child: child,
+      ),
     );
+
+    if (widget.scaleFrom != 1) {
+      content = ScaleTransition(scale: _scale, child: content);
+    }
+
+    return FadeTransition(opacity: _opacity, child: content);
   }
+}
+
+/// Holds an overshooting curve inside the range an opacity will accept.
+class _ClampUnit extends Animatable<double> {
+  @override
+  double transform(double t) => t.clamp(0, 1);
 }
 
 /// Wraps a list of children in [FadeSlideIn] so a column or row resolves as one
@@ -177,27 +210,36 @@ class _ShimmerState extends State<Shimmer>
 
     final highlight = context.tokens.skeletonHighlight;
 
-    return AnimatedBuilder(
-      animation: _controller,
-      child: widget.child,
-      builder: (context, child) => ShaderMask(
-        blendMode: BlendMode.srcATop,
-        shaderCallback: (bounds) {
-          // Travels one and a half widths so the pause between sweeps reads as
-          // rhythm instead of a stall.
-          final slide = -1.5 + _controller.value * 3;
-          return LinearGradient(
-            begin: Alignment(slide - 0.6, -0.4),
-            end: Alignment(slide + 0.6, 0.4),
-            colors: [
-              highlight.withValues(alpha: 0),
-              Colors.white.withValues(alpha: 0.16),
-              highlight.withValues(alpha: 0),
-            ],
-            stops: const [0, 0.5, 1],
-          ).createShader(bounds);
-        },
-        child: child,
+    // Boundary around the sweep, not inside it.
+    //
+    // A ShaderMask is a save layer, and this one is rebuilt on every frame for as
+    // long as any skeleton is on screen. Without a boundary that repaint walks up
+    // to whatever ancestor last owned a layer, which on most screens is the
+    // FrostBackdrop - so a loading list was repainting five full screen gradients
+    // sixty times a second to sweep a highlight across a placeholder.
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        child: widget.child,
+        builder: (context, child) => ShaderMask(
+          blendMode: BlendMode.srcATop,
+          shaderCallback: (bounds) {
+            // Travels one and a half widths so the pause between sweeps reads as
+            // rhythm instead of a stall.
+            final slide = -1.5 + _controller.value * 3;
+            return LinearGradient(
+              begin: Alignment(slide - 0.6, -0.4),
+              end: Alignment(slide + 0.6, 0.4),
+              colors: [
+                highlight.withValues(alpha: 0),
+                Colors.white.withValues(alpha: 0.16),
+                highlight.withValues(alpha: 0),
+              ],
+              stops: const [0, 0.5, 1],
+            ).createShader(bounds);
+          },
+          child: child,
+        ),
       ),
     );
   }

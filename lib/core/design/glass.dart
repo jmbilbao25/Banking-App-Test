@@ -564,8 +564,15 @@ class Glass {
   /// True when the platform asks for less transparency. Flutter does not expose
   /// the iOS reduce transparency flag, so high contrast stands in for it, the
   /// same substitution the rest of the app makes.
+  ///
+  /// Read as an aspect, not off the whole [MediaQueryData]. Every pane in the
+  /// application calls this from its build, and `MediaQuery.maybeOf` would
+  /// subscribe each one to every field on the data - so a keyboard sliding up,
+  /// which changes the view insets on every frame, rebuilt every lens in the tree
+  /// and handed each one a freshly built style. See [Motion.isReduced], which had
+  /// the same problem for the same reason.
   static bool isReduced(BuildContext context) =>
-      MediaQuery.maybeOf(context)?.highContrast ?? false;
+      MediaQuery.maybeHighContrastOf(context) ?? false;
 
   /// This recipe softened for a card sitting on a known backdrop.
   ///

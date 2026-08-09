@@ -144,18 +144,32 @@ class _GlassNavBar extends StatelessWidget {
                           slot: ShellDestinations.slotOf(activeBranch),
                           height: _height,
                         ),
-                        Row(
-                          children: [
-                            for (final destination in ShellDestinations.ordered)
-                              Expanded(
-                                child: _NavItem(
-                                  destination: destination,
-                                  isActive:
-                                      activeBranch == destination.branch,
-                                  onTap: () => onSelect(destination.branch),
+                        // The glyphs get their own layer.
+                        //
+                        // The bar is the one surface that is on screen on every
+                        // route, and it samples a live backdrop, so its region is
+                        // recomposited on every frame in which anything underneath
+                        // it scrolls or animates. Sharing a layer with the pane
+                        // meant re-running the whole row each of those frames, and
+                        // the row is ten shadowed draws: five glyphs and five
+                        // labels, each carrying a blurred halo. On its own layer it
+                        // is rasterised once and then blitted, and it only redraws
+                        // when the selection actually moves.
+                        RepaintBoundary(
+                          child: Row(
+                            children: [
+                              for (final destination
+                                  in ShellDestinations.ordered)
+                                Expanded(
+                                  child: _NavItem(
+                                    destination: destination,
+                                    isActive:
+                                        activeBranch == destination.branch,
+                                    onTap: () => onSelect(destination.branch),
+                                  ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       ],
                     ),
