@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
 import '../../core/design/glass.dart';
 import '../../core/design/tokens.dart';
@@ -406,47 +407,61 @@ class GlassIconButton extends StatelessWidget {
     child: ExcludeSemantics(
       child: SizedBox.square(
         dimension: Layout.minTapTarget,
-        child: Material(
-          color: Colors.white.withValues(alpha: 0.12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            side: BorderSide(color: Colors.white.withValues(alpha: 0.24)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Icon(icon, color: Colors.white, size: 20),
-                if (_hasBadge)
-                  Positioned(
-                    top: 6,
-                    right: 4,
-                    child: Container(
-                      constraints: const BoxConstraints(minWidth: 16),
-                      height: 16,
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      decoration: BoxDecoration(
-                        color: Palette.frostIceBlue,
-                        borderRadius: BorderRadius.circular(AppRadius.pill),
-                        border: Border.all(
-                          color: Palette.frostBaseTop,
-                          width: 1.5,
+        child: LiquidGlass(
+          radius: AppRadius.md,
+          // Always the dark recipe. This control only ever sits on the brand
+          // backdrop, in both themes, so a pane that followed the platform
+          // brightness would turn pale and disappear into a navy gradient.
+          recipe: Glass.dark.panel,
+          // Feedback: the pane gives under the finger and springs back, which is
+          // the one thing a piece of glass does that a tinted rectangle cannot.
+          // The lens allocates nothing for this until the first touch.
+          flex: const LiquidGlassFlex.subtle(),
+          child: Material(
+            // The pane is the surface now, so the Material is here only to host
+            // the ink response. The theme sets NoSplash, so nothing is drawn.
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              // Expanded on purpose. The pane takes its size from the box above
+              // it, but inside the pane the content is what measures, so without
+              // this the whole control collapses to the width of the glyph and
+              // stops being a 48 pixel target.
+              child: SizedBox.expand(
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(icon, color: Colors.white, size: 20),
+                    if (_hasBadge)
+                      Positioned(
+                        top: 6,
+                        right: 4,
+                        child: Container(
+                          constraints: const BoxConstraints(minWidth: 16),
+                          height: 16,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            color: Palette.frostIceBlue,
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                            border: Border.all(
+                              color: Palette.frostBaseTop,
+                              width: 1.5,
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            _badgeText,
+                            style: AppType.labelSmall.copyWith(
+                              color: Palette.frostBaseTop,
+                              fontSize: 10,
+                              height: 1,
+                            ),
+                          ),
                         ),
                       ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        _badgeText,
-                        style: AppType.labelSmall.copyWith(
-                          color: Palette.frostBaseTop,
-                          fontSize: 10,
-                          height: 1,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
+                  ],
+                ),
+              ),
             ),
           ),
         ),

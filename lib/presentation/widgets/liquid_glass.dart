@@ -202,12 +202,20 @@ class _GlassBodyPainter extends CustomPainter {
     wash(glass.lift);
 
     // Implied light source.
+    //
+    // Scaled from the shortest side, not the longest. A specular bloom is a
+    // property of how thick the pane is, not how long, and reading it off the
+    // longest side put a 210 pixel radial on a bar 68 pixels tall: the highlight
+    // covered the whole pane and flattened it to a grey ramp, which is most of
+    // what made the old bar read as a slab. Off the shortest side it stays a
+    // highlight near the corner the light comes from, and it still opens up to
+    // roughly its old size on a surface that is nearer square.
     canvas.drawRect(
       rect,
       Paint()
         ..shader = ui.Gradient.radial(
           bloomAlignment.withinRect(rect),
-          size.longestSide * 0.6,
+          size.shortestSide * 1.6,
           [glass.bloom, glass.bloom.withValues(alpha: 0)],
           const [0, 1],
         ),
@@ -262,6 +270,12 @@ class _GlassSheenPainter extends CustomPainter {
 
     // Reflection of the room. Narrow, off axis, and fading at both ends, so it
     // reads as light on a curved face rather than a stripe.
+    //
+    // Half the width and half the strength it carried when this painter also drew
+    // the outer rim and two corner arcs. Those balanced it. On their own against
+    // the shader's rim it stopped reading as a reflection and started reading as
+    // a grey wedge smeared across the corner, which is the exact failure the
+    // whole change was meant to remove.
     final transparent = glass.sheen.withValues(alpha: 0);
     canvas.drawRect(
       rect,
@@ -271,11 +285,11 @@ class _GlassSheenPainter extends CustomPainter {
           Offset(rect.width * 0.62, rect.bottom),
           [
             transparent,
-            glass.sheen.withValues(alpha: glass.sheen.a * 0.35),
-            glass.sheen,
+            glass.sheen.withValues(alpha: glass.sheen.a * 0.16),
+            glass.sheen.withValues(alpha: glass.sheen.a * 0.48),
             transparent,
           ],
-          const [0.04, 0.13, 0.2, 0.36],
+          const [0.03, 0.08, 0.13, 0.24],
         ),
     );
 
