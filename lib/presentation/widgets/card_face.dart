@@ -85,14 +85,12 @@ class CardFace extends StatelessWidget {
               child: Stack(
                 fit: StackFit.passthrough,
                 children: [
-                  // Inner hairline. Reads as the milled edge of the card.
+                  // The glass over the colour. Under the content, so the type is
+                  // never veiled by it.
                   Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: border,
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.14),
-                        ),
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _CardGlassPainter(radius: radius),
                       ),
                     ),
                   ),
@@ -152,6 +150,15 @@ class CardFace extends StatelessWidget {
                             ],
                           ),
                         ],
+                      ),
+                    ),
+                  ),
+                  // Over the content, so a glyph parked against the edge cannot
+                  // cut the rim.
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _CardRimPainter(radius: radius),
                       ),
                     ),
                   ),
@@ -732,6 +739,203 @@ const List<_Crystal> _frostCrystals = [
   _Crystal(0.66, 0.05, 0.036, 1.15, 0.6),
   _Crystal(0.28, 0.95, 0.037, 0.65, 0.64),
 ];
+
+/// The card, read as a sheet of glass laid over a coloured card.
+///
+/// Not a lens, and deliberately not. There is nothing behind this card to refract:
+/// the cards page is an ordinary scrolling list on the theme background, so a
+/// pane that sampled its backdrop would be displacing a flat fill and would show
+/// the user nothing at all. What makes an object read as glass at this size is not
+/// the transmitted image, which a card that has to stay legible cannot afford to
+/// distort anyway - it is the edge. So the edge is what this paints.
+///
+/// Every mark here is placed against the card's own value structure, and getting
+/// that wrong is worth recording because the first attempt was invisible.
+///
+/// The colourway falls from ice at the top to near black below the mark. A glass
+/// treatment built the conventional way - a bright crown along the top edge, a lit
+/// rim above, a faint bounce below - put every one of its highlights where the
+/// card was already at its brightest, and rendered white on white. At 320 pixels
+/// the result was indistinguishable from the untreated card.
+///
+/// So the light goes where the card is dark. The bottom half is where a bright
+/// edge has something to be bright against, and it happens to be the half that
+/// reads as the thickness of the sheet anyway: glass gathers light at its base.
+///
+/// Two marks here, and the two rim strokes in [_CardRimPainter] above the content:
+///
+///   1. a glow rising off the bottom edge, the weight of the sheet catching light
+///      returned from whatever it is resting on
+///   2. a broad reflection running across the dark half, which is what says
+///      *surface* rather than *edge* - an object with an edge but no reflection
+///      reads as a card with a bright border drawn on it
+///
+/// Both live in the lower half for the reason above. The card's own specular
+/// travel from [_CardFacePainter] crosses the whole face and moves with the
+/// swipe; this one is fixed, because a reflection of the room does not slide when
+/// the card turns a few degrees.
+class _CardGlassPainter extends CustomPainter {
+  const _CardGlassPainter({required this.radius});
+
+  final double radius;
+
+  /// Share of the height the base glow rises over. Short enough to stay an edge
+  /// event: a highlight that reaches the middle of the object becomes a ramp,
+  /// which is the failure the navigation bar's bloom documents.
+  static const double _baseRise = 0.15;
+
+  static final Map<Size, List<(Rect, Paint)>> _cache = {};
+
+  static List<(Rect, Paint)> _marksFor(Size size) {
+    final hit = _cache[size];
+    if (hit != null) return hit;
+    if (_cache.length >= 8) _cache.clear();
+
+    final base = Rect.fromLTWH(
+      0,
+      size.height * (1 - _baseRise),
+      size.width,
+      size.height * _baseRise,
+    );
+
+    // Drawn to the whole face, not to the lower half it occupies.
+    //
+    // This was a rectangle starting at 52% of the height, and it left a hard
+    // horizontal seam straight across the card. The gradient runs corner to corner,
+    // so along the top edge of that rectangle it had not yet reached zero, and a
+    // fill that stops while it still has a value shows you exactly where it
+    // stopped. Confining a soft mark to a region is the region's edges you then
+    // have to hide; it is cheaper and safer to run the gradient across everything
+    // and place the falloff with the stops instead.
+    final reflection = Offset.zero & size;
+
+    return _cache[size] = [
+      (
+        base,
+        Paint()
+          ..shader = ui.Gradient.linear(base.bottomCenter, base.topCenter, [
+            Colors.white.withValues(alpha: 0.13),
+            Colors.white.withValues(alpha: 0),
+          ]),
+      ),
+      (
+        reflection,
+        Paint()
+          ..shader = ui.Gradient.linear(
+            reflection.bottomLeft,
+            reflection.topRight,
+            [
+              Colors.white.withValues(alpha: 0),
+              Colors.white.withValues(alpha: 0.07),
+              Colors.white.withValues(alpha: 0),
+            ],
+            // Narrow, and weighted to the bottom left so the band crosses the dark
+            // body and dies well before the ice. Both ends are transparent, so
+            // there is no edge anywhere in it.
+            const [0.02, 0.20, 0.46],
+          ),
+      ),
+    ];
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    for (final (rect, paint) in _marksFor(size)) {
+      canvas.drawRect(rect, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CardGlassPainter old) => old.radius != radius;
+}
+
+/// The card's edge.
+///
+/// This replaces a uniform one pixel white stroke at alpha 0.14, which the file
+/// called the milled edge of the card. As a description of a metal card that was
+/// right; as glass it was the exact defect [Glass.rimAmbient] describes at
+/// length, where a reviewer measured a pane's top and bottom rim as equal to
+/// within a percent and concluded the object was outlined rather than lit. An
+/// even stroke all the way round is an outline. A lit edge is bright where the
+/// light lands, dim where it only grazes, and carries a little bounce underneath.
+///
+/// Two strokes rather than one, and the inner one is what sells the thickness: a
+/// transparent sheet shows you both of its surfaces, and the near edge and the far
+/// edge are what the eye reads the depth from.
+///
+/// Worth distinguishing from the inner hairline that was deleted from
+/// [_GlassSheenPainter], because the objection there does not transfer. That one
+/// ran along the top only, at constant amplitude, six device pixels inside the
+/// true edge and directly across a merchant's name - "a scratch dragged across the
+/// customer's transaction list". This is a closed perimeter at a third the alpha,
+/// following the corner all the way round, on a surface whose content sits well
+/// inside it.
+class _CardRimPainter extends CustomPainter {
+  const _CardRimPainter({required this.radius});
+
+  final double radius;
+
+  static const double _width = 1.2;
+
+  /// Gap between the two surfaces of the sheet, in logical pixels.
+  static const double _thickness = 2.6;
+
+  static final Map<(Size, double), List<(RRect, Paint)>> _cache = {};
+
+  static List<(RRect, Paint)> _strokesFor(Size size, double radius) {
+    final key = (size, radius);
+    final hit = _cache[key];
+    if (hit != null) return hit;
+    if (_cache.length >= 8) _cache.clear();
+
+    final rect = Offset.zero & size;
+    final outer = RRect.fromRectAndRadius(
+      rect,
+      Radius.circular(radius),
+    ).deflate(_width / 2);
+    final inner = outer.deflate(_thickness);
+
+    Paint lit(double top, double side, double bottom) => Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _width
+      ..shader = ui.Gradient.linear(
+        rect.topCenter,
+        rect.bottomCenter,
+        [
+          Colors.white.withValues(alpha: top),
+          Colors.white.withValues(alpha: side),
+          Colors.white.withValues(alpha: bottom),
+        ],
+        // Weighted to the top. The sides are most of the perimeter, so an even
+        // split spreads the highlight into a uniform outline.
+        const [0, 0.4, 1],
+      );
+
+    return _cache[key] = [
+      // Brightest at the bottom, not the top. On this colourway the top edge is
+      // laid over ice and the bottom over near black, so an even stroke is a
+      // stroke you can only see half of, and a top-lit ramp is one you cannot see
+      // at all. Running the light the other way puts the strong end of the rim
+      // where there is contrast to spend it on.
+      (outer, lit(0.30, 0.38, 0.68)),
+      // The far surface of the sheet, seen through it. Present only where the body
+      // is dark enough to show it, which is the same place.
+      (inner, lit(0.02, 0.06, 0.16)),
+    ];
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    for (final (shape, paint) in _strokesFor(size, radius)) {
+      canvas.drawRRect(shape, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CardRimPainter old) => old.radius != radius;
+}
 
 /// The fills of a card face that are a function of its size and its product, and
 /// of nothing that moves.
@@ -1626,14 +1830,11 @@ class CardBackFace extends StatelessWidget {
           child: Stack(
             fit: StackFit.passthrough,
             children: [
+              // The same glass as the front, so turning the card over does not
+              // change what the card is made of.
               Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: border,
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.14),
-                    ),
-                  ),
+                child: IgnorePointer(
+                  child: CustomPaint(painter: _CardGlassPainter(radius: radius)),
                 ),
               ),
               LayoutBuilder(
@@ -1831,6 +2032,12 @@ class CardBackFace extends StatelessWidget {
                     ],
                   );
                 },
+              ),
+              // Over the content, as on the front.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(painter: _CardRimPainter(radius: radius)),
+                ),
               ),
             ],
           ),

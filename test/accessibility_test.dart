@@ -11,6 +11,7 @@ import 'package:mobile_bank_app/presentation/screens/notifications_screen.dart';
 import 'package:mobile_bank_app/presentation/screens/profile_screen.dart';
 import 'package:mobile_bank_app/presentation/screens/time_deposit_screen.dart';
 import 'package:mobile_bank_app/presentation/screens/transaction_history_screen.dart';
+import 'package:mobile_bank_app/presentation/widgets/pressable.dart';
 import 'package:mobile_bank_app/state/providers.dart';
 
 class _DismissedAd extends OpeningAdDismissedController {
@@ -92,13 +93,21 @@ void main() {
     ) async {
       await _pumpAt(tester, const DashboardScreen(), textScale: 1.0);
 
-      final buttons = find.byType(InkWell);
+      // Both tap wrappers, because the application uses both: [Pressable] is the
+      // house wrapper for cards, tiles, rows and icon controls, and an [InkWell]
+      // is what a Material control brings with it. Looking for only one of them
+      // makes this test pass or fail on an implementation detail rather than on
+      // the size of the target, which is what Req 4.2 is about - it went green
+      // once for a screen it was no longer measuring.
+      final buttons = find.byWidgetPredicate(
+        (widget) => widget is InkWell || widget is Pressable,
+      );
       expect(buttons, findsWidgets);
 
       var checked = 0;
       for (final element in buttons.evaluate()) {
         final size = tester.getSize(find.byWidget(element.widget));
-        // Some InkWells are row sized rather than icon sized, so only the small
+        // Some targets are row sized rather than icon sized, so only the small
         // ones are interesting: a control smaller than the floor in either
         // direction is the failure Req 4.2 describes.
         if (size.width < 120) {
