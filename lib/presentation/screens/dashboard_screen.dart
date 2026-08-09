@@ -173,7 +173,10 @@ class _TopRegion extends ConsumerWidget {
             Space.x5,
             Space.x4,
             Space.x5,
-            Space.x10,
+            // See [Layout.navBarClearance]. This was Space.x10, which is 40, against
+            // a bar that covers the lowest 84 pixels of the screen: the last row of
+            // the list could not be scrolled out from under it.
+            Layout.navBarClearance,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

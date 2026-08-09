@@ -3,12 +3,12 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
 import '../../core/design/glass.dart';
 import '../../core/design/motion.dart';
 import '../../core/design/tokens.dart';
 import '../../core/design/typography.dart';
-import '../widgets/brand.dart';
 import '../widgets/liquid_glass.dart';
 import '../widgets/pressable.dart';
 import 'destinations.dart';
@@ -51,11 +51,63 @@ class AppShell extends StatelessWidget {
   );
 }
 
+/// The shipped navigation bar, on its own, with no router attached.
+///
+/// This exists so the render harness in `tool/glass_lab` photographs the bar the
+/// application actually ships rather than a copy of it. A copy is worse than no
+/// harness at all: it lets a reviewer approve a bar that is not the one on the
+/// device. Nothing in the application uses this, and it adds no code to the
+/// shipped tree beyond the constructor.
+@visibleForTesting
+class ShellNavBarPreview extends StatelessWidget {
+  const ShellNavBarPreview({
+    required this.activeBranch,
+    this.onSelect,
+    this.showContent = true,
+    this.recipe,
+    super.key,
+  });
+
+  final int activeBranch;
+  final ValueChanged<int>? onSelect;
+
+  /// Overrides the recipe the pane is drawn with.
+  ///
+  /// The harness sweeps the lens parameters through this. Without it a sweep means
+  /// editing the recipe and rebuilding once per value, and at three minutes a
+  /// build that is enough friction to discourage checking a hunch - which is how a
+  /// refraction that showed the same word twice survived three rounds.
+  final Glass? recipe;
+
+  /// False renders the pane with nothing in it.
+  ///
+  /// This is the measurement mode. What the pane does to its own backdrop can
+  /// only be read off a region that contains nothing but pane and backdrop, and
+  /// every glyph in the bar contributes far more contrast than the glass does. It
+  /// is the same pane at the same geometry, so the numbers transfer.
+  final bool showContent;
+
+  @override
+  Widget build(BuildContext context) => _GlassNavBar(
+    activeBranch: activeBranch,
+    onSelect: onSelect ?? (_) {},
+    showContent: showContent,
+    recipe: recipe,
+  );
+}
+
 class _GlassNavBar extends StatelessWidget {
-  const _GlassNavBar({required this.activeBranch, required this.onSelect});
+  const _GlassNavBar({
+    required this.activeBranch,
+    required this.onSelect,
+    this.showContent = true,
+    this.recipe,
+  });
 
   final int activeBranch;
   final ValueChanged<int> onSelect;
+  final bool showContent;
+  final Glass? recipe;
 
   static const double _height = 68;
 
@@ -80,36 +132,33 @@ class _GlassNavBar extends StatelessWidget {
               // half the height gives the same stadium while keeping the radii
               // well formed for the lens, the rim, and the capsule painter.
               radius: math.min(AppRadius.pill, _height / 2),
-              // Dark in both brightnesses. See Glass.bar for why the one surface
-              // that spans a navy gradient and a white sheet cannot adapt.
-              recipe: Glass.bar,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _SelectionCapsule(
-                    slot: ShellDestinations.slotOf(activeBranch),
-                    height: _height,
-                  ),
-                  Row(
-                    children: [
-                      for (final destination in ShellDestinations.ordered)
-                        Expanded(
-                          child: destination.branch == 0
-                              ? _HomeMark(
-                                  label: destination.label,
-                                  isActive: activeBranch == 0,
-                                  onTap: () => onSelect(0),
-                                )
-                              : _NavItem(
+              // Follows the brightness. See Glass.barOf for why this used to be
+              // pinned to the dark recipe and why that was the wrong call.
+              recipe: recipe ?? Glass.barOf(context),
+              child: !showContent
+                  ? const SizedBox.expand()
+                  : Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _SelectionCapsule(
+                          slot: ShellDestinations.slotOf(activeBranch),
+                          height: _height,
+                        ),
+                        Row(
+                          children: [
+                            for (final destination in ShellDestinations.ordered)
+                              Expanded(
+                                child: _NavItem(
                                   destination: destination,
-                                  isActive: activeBranch == destination.branch,
+                                  isActive:
+                                      activeBranch == destination.branch,
                                   onTap: () => onSelect(destination.branch),
                                 ),
+                              ),
+                          ],
                         ),
-                    ],
-                  ),
-                ],
-              ),
+                      ],
+                    ),
             ),
           ),
         ),
@@ -118,14 +167,25 @@ class _GlassNavBar extends StatelessWidget {
   );
 }
 
-/// The one moving part of the bar: a glass capsule that slides from the slot it
-/// was in to the slot that was tapped.
+/// The one moving part of the bar: a second lens that slides from the slot it was
+/// in to the slot that was tapped.
 ///
 /// A shared indicator, rather than a highlight per item, is what makes the bar
-/// read as one surface with a selection on it instead of five buttons. It is
-/// painted rather than laid out, so it can stretch and squash without pushing
-/// the items around, and so it needs no second [BackdropFilter] on top of the
-/// pane's own.
+/// read as one surface with a selection on it instead of five buttons.
+///
+/// It is a real lens, not a painted shape, and that is the point. It used to be
+/// an [RRect] with a gradient fill, a rim stroke, a crown highlight and a brand
+/// coloured glow spilling out from under it. Two reviewers looking at renders of
+/// this bar beside a reference implementation, independently and without knowing
+/// which was which, both named that shape as the single worst thing in the frame:
+/// an opaque saturated sticker glued onto a surface whose entire subject is
+/// transparency. A painted highlight cannot be made of glass by tuning its
+/// colours, because what identifies glass is that it bends what is behind it, and
+/// paint has nothing behind it.
+///
+/// So the selection is now the same material as the bar, one tier brighter: its
+/// own refraction, its own optical rim, and its own colour separation at the
+/// edge. No fill to speak of and no glow at all.
 ///
 /// The liquid part is squash and stretch. While travelling, the capsule widens
 /// by an amount proportional to the distance it has to cover and loses a little
@@ -133,13 +193,7 @@ class _GlassNavBar extends StatelessWidget {
 /// [Motion.settle] and comes back, so it arrives under its own weight. Both
 /// effects flatten to nothing under reduced motion, leaving a plain slide.
 ///
-/// It marks all five slots, including the centre. The bar used to suppress it
-/// there and light the brand mark instead, which left selection with two
-/// grammars: a capsule on four slots and a glowing tile on the fifth. A glowing
-/// tile mounted in the middle of a bar reads as a primary action rather than as a
-/// location, so the mark now sits inside the same capsule as everything else and
-/// keeps only its lift, which acknowledges the tap without standing in for the
-/// indicator.
+/// It marks all five slots, including the centre.
 class _SelectionCapsule extends StatefulWidget {
   const _SelectionCapsule({required this.slot, required this.height});
 
@@ -195,192 +249,192 @@ class _SelectionCapsuleState extends State<_SelectionCapsule>
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final glass = Glass.bar;
-    final reducedGlass = Glass.isReduced(context);
-
-    return AnimatedBuilder(
-      animation: _travel,
-      builder: (context, _) => SizedBox.expand(
-        child: CustomPaint(
-          painter: _CapsulePainter(
-            from: _from,
-            to: _to.toDouble(),
-            progress: _travel.value,
-            stretch: Motion.amount(context, 1),
-            fill: glass.indicator,
-            rim: glass.indicatorRim,
-            glow: reducedGlass ? const Color(0x00000000) : glass.indicatorGlow,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CapsulePainter extends CustomPainter {
-  const _CapsulePainter({
-    required this.from,
-    required this.to,
-    required this.progress,
-    required this.stretch,
-    required this.fill,
-    required this.rim,
-    required this.glow,
-  });
-
-  final double from;
-  final double to;
-  final double progress;
-
-  /// Scales squash and stretch to zero under reduced motion.
-  final double stretch;
-
-  final List<Color> fill;
-  final Color rim;
-  final Color glow;
-
   /// Widest the capsule is allowed to get, so it stays a capsule on a tablet
   /// width bar rather than growing into a slab.
   static const double _maxWidth = 66;
   static const double _inset = Space.x2;
 
-  @override
-  void paint(Canvas canvas, Size size) {
+  /// Where the capsule sits and how big it is, for a bar of [size].
+  ///
+  /// Pulled out of the old painter unchanged. The geometry was never the problem;
+  /// what the geometry was filled with was.
+  Rect _rectFor(Size size, double stretch) {
     final slotWidth = size.width / ShellDestinations.count;
     final restWidth = math.min(slotWidth - _inset, _maxWidth);
     final restHeight = size.height - _inset * 2;
 
-    final t = progress.clamp(0.0, 1.0);
+    final t = _travel.value.clamp(0.0, 1.0);
     final travelled = Motion.settle.transform(t);
     // Peaks at the midpoint of the journey and is gone at both ends.
     final smear = math.sin(math.pi * t) * stretch;
-    final reach = math.min((to - from).abs() * 0.14, 0.34);
+    final reach = math.min((_to - _from).abs() * 0.14, 0.34);
 
-    final width = restWidth * (1 + reach * smear);
-    final height = restHeight * (1 - 0.1 * reach * smear);
+    final centreX =
+        ui.lerpDouble(_from + 0.5, _to + 0.5, travelled)! * slotWidth;
 
-    final centreX = ui.lerpDouble(from + 0.5, to + 0.5, travelled)! * slotWidth;
-
-    final rect = Rect.fromCenter(
+    return Rect.fromCenter(
       center: Offset(centreX, size.height / 2),
-      width: width,
-      height: height,
+      width: restWidth * (1 + reach * smear),
+      height: restHeight * (1 - 0.1 * reach * smear),
     );
-    final shape = RRect.fromRectAndRadius(rect, Radius.circular(height / 2));
-
-    // The brand colour arrives as light spilling from under the capsule rather
-    // than as fill, which is what keeps the selected destination reading as a
-    // brighter piece of glass instead of a painted button.
-    if (glow.a > 0) {
-      canvas.drawRRect(
-        shape.inflate(1.5),
-        Paint()
-          ..color = glow
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
-      );
-    }
-
-    canvas.drawRRect(
-      shape,
-      Paint()
-        ..shader = ui.Gradient.linear(rect.topCenter, rect.bottomCenter, fill),
-    );
-
-    // Rim, brightest across the top where the pane's own light lands.
-    canvas.drawRRect(
-      shape.deflate(0.5),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..shader = ui.Gradient.linear(
-          rect.topCenter,
-          rect.bottomCenter,
-          [
-            rim,
-            rim.withValues(alpha: rim.a * 0.3),
-            rim.withValues(alpha: rim.a * 0.55),
-          ],
-          const [0, 0.6, 1],
-        ),
-    );
-
-    // A short highlight across the top third, so the capsule has a face and not
-    // just an outline.
-    canvas.save();
-    canvas.clipRRect(shape);
-    final crown = Rect.fromLTWH(rect.left, rect.top, rect.width, height * 0.42);
-    canvas.drawRect(
-      crown,
-      Paint()
-        ..shader = ui.Gradient.linear(crown.topCenter, crown.bottomCenter, [
-          rim.withValues(alpha: rim.a * 0.3),
-          rim.withValues(alpha: 0),
-        ]),
-    );
-    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant _CapsulePainter old) =>
-      old.progress != progress ||
-      old.from != from ||
-      old.to != to ||
-      old.stretch != stretch ||
-      old.rim != rim ||
-      old.glow != glow;
-}
+  Widget build(BuildContext context) {
+    final glass = Glass.barOf(context);
+    final stretch = Motion.amount(context, 1);
 
-/// The brand mark in the centre slot.
-///
-/// The mark is the home glyph, and that is all it is now. It used to be its own
-/// indicator: a brand coloured glow breathed behind the tile and a specular band
-/// swept its face, because the capsule deliberately stood down on this slot. That
-/// left selection with two grammars, and a glowing tile mounted in the middle of
-/// a bar reads as a primary action rather than as a location. The capsule marks
-/// all five slots now, so the glow was saying the same thing twice and the louder
-/// of the two was saying the wrong thing.
-///
-/// What is left is the lift every other slot gets. No controller, no painters, and
-/// no ticker anywhere in the bar.
-class _HomeMark extends StatelessWidget {
-  const _HomeMark({
-    required this.label,
-    required this.isActive,
-    required this.onTap,
-  });
+    return LayoutBuilder(
+      builder: (context, constraints) => AnimatedBuilder(
+        animation: _travel,
+        builder: (context, _) {
+          final rect = _rectFor(constraints.biggest, stretch);
+          final radius = rect.height / 2;
 
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  static const double _size = 38;
-
-  @override
-  Widget build(BuildContext context) => Pressable(
-    onTap: onTap,
-    semanticLabel: '$label${isActive ? ', selected' : ''}',
-    borderRadius: AppRadius.pill,
-    child: Center(
-      // State transition: the mark rises and grows a little when home becomes
-      // the branch in view, matching the other four slots.
-      child: TweenAnimationBuilder<double>(
-        tween: Tween<double>(end: isActive ? 1 : 0),
-        duration: Motion.resolve(context, Motion.medium),
-        curve: Motion.emphasized,
-        builder: (context, selected, child) => Transform.scale(
-          scale: 1 + 0.08 * selected,
-          child: Transform.translate(
-            offset: Offset(0, Motion.amount(context, -2) * selected),
-            child: child,
-          ),
-        ),
-        child: const FrostMark(size: _size),
+          return Stack(
+            children: [
+              Positioned.fromRect(
+                rect: rect,
+                child: IgnorePointer(
+                  child: Glass.isReduced(context)
+                      // Reduced transparency gets the old painted capsule back,
+                      // because the whole point of that mode is to stop asking
+                      // the user to read text through a lens.
+                      ? DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(radius),
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: glass.indicator,
+                            ),
+                            border: Border.all(color: glass.indicatorRim),
+                          ),
+                        )
+                      : LiquidGlassLens(
+                          style: LiquidGlassStyle(
+                            shape: LiquidGlassShape.continuousRoundedRectangle(
+                              cornerRadius: radius,
+                              lightColor: glass.indicatorRim,
+                              // A touch brighter than the pane's rim, not four
+                              // times it. The selected slot is a nearer piece of
+                              // glass and a nearer edge catches more light, which
+                              // was the argument for pushing this hard; what it
+                              // actually produced was a bright ring reviewers
+                              // measured at seven times the strength of the bar's
+                              // own edge and read as a sticker. A nearer piece of
+                              // glass is identified by transmitting and bending
+                              // more, not by being outlined harder.
+                              lightIntensity: 1.15,
+                              borderType: const OpticalBorder(
+                                borderSaturation: 1.4,
+                                ambientIntensity: 1.2,
+                                borderSolidity: 0.4,
+                              ),
+                            ),
+                            appearance: LiquidGlassAppearance(
+                              color: glass.indicator.first,
+                              // Sigma 1, where this was 0 on the argument that the
+                              // capsule sits on a pane which has already blurred
+                              // the backdrop once, so blurring again would only
+                              // make the capsule the more opaque of the two.
+                              //
+                              // The argument held on the device and failed in the
+                              // harness, and the failure turned out to be the
+                              // interesting one. At 0 the capsule magnified text
+                              // behind it with nothing to smooth it, and that text
+                              // is drawn with subpixel antialiasing: enlarging its
+                              // per-channel edge differences without a blur to
+                              // average them turned every letter under the capsule
+                              // into saturated red, green and yellow copies of
+                              // itself. It was the worst artefact in the render and
+                              // it was the only element in the bar with no blur at
+                              // all, which is precisely why it was the only element
+                              // showing the fringes.
+                              //
+                              // A sigma of 1 is enough to average the subpixels away
+                              // and small enough to keep the capsule the clearer
+                              // piece of glass, which is the job it came for.
+                              blur: const LiquidGlassBlur(sigmaX: 1, sigmaY: 1),
+                            ),
+                            refraction: const LiquidGlassRefraction(
+                              // Snell's law through a bevel, on the same physical
+                              // path as the pane and for the same reasons. See
+                              // [Glass.lensIor].
+                              //
+                              // The bevel is half the capsule's own height, so its
+                              // curve runs from rim to centreline exactly as the
+                              // pane's does - the two are the same glass at two
+                              // sizes rather than two different materials. On the
+                              // legacy path this had to be a 6 pixel sliver, for
+                              // the same reason the pane did: anything wider showed
+                              // the wrong letters across most of a 44 pixel object,
+                              // which reviewers picked out as fringing on the one
+                              // word passing behind it.
+                              refractionType: OpticalRefraction(
+                                refraction: 1.5,
+                                refractionWidth: 22,
+                                depth: 0.03,
+                              ),
+                              // No magnification, as on the pane. At 1.06 this laid
+                              // a second, larger copy of the backdrop over the one
+                              // the band was already displacing.
+                              magnification: 1,
+                              // Zero, where this was 0.005 on the argument that a
+                              // small object has almost no transmitted image for
+                              // dispersion to spoil, so the capsule was the one
+                              // place in the interface that could afford it.
+                              //
+                              // The argument was sound and the premise was false.
+                              // The capsule is 44 pixels wide and it sits directly
+                              // over the transaction list, so it has a transmitted
+                              // image and that image is type. Reviewers picked out
+                              // cyan and green fringing on the one word passing
+                              // behind it by name. A pane earns the right to spend
+                              // dispersion by having nothing legible behind it, and
+                              // nothing in this bar qualifies.
+                              //
+                              // The rim keeps its colour: that comes from the
+                              // optical border's [borderSaturation] above, which is
+                              // a separate path and is still above unity.
+                              chromaticAberration: 0,
+                              refractionMode:
+                                  LiquidGlassRefractionMode.shapeRefraction,
+                            ),
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
-    ),
-  );
+    );
+  }
 }
+
+/// The centre slot has no special case any more, and that is the change.
+///
+/// It was a [FrostMark]: the brand glyph on a 38 pixel tile filled with the navy
+/// to cyan brand gradient. On an opaque bar that read as a logo. On a pane whose
+/// whole proposition is that you can see through it, it was the loudest possible
+/// contradiction, and reviewers comparing renders of this bar against a reference
+/// implementation named it unprompted: the most opaque, most saturated object in
+/// the frame, an app icon glued to the bar rather than one of five places to go.
+///
+/// The first attempt at a fix dropped the tile and kept the bare glyph, drawn at
+/// the weight of the four Material icons beside it. That was worse in a way worth
+/// recording: the mark is a horizontal bar crossed by two diagonals, and stripped
+/// of its tile, at 19 pixels, between a receipt and a pie chart, two reviewers
+/// independently read it not as a logo but as a missing glyph fallback - "renders
+/// as a black asterisk", "the app failed to draw". A brand mark that reads as a
+/// rendering error is worse than no brand mark.
+///
+/// So the centre slot is now [Icons.home_rounded], the icon
+/// [ShellDestinations.ordered] always declared for it, and all five slots are one
+/// grammar: a glyph, a label, and a lens behind whichever is selected. The brand
+/// is present on the dashboard through [FrostLockup]; it does not need a badge in
+/// the navigation bar, and the bar cannot afford one.
 
 class _NavItem extends StatelessWidget {
   const _NavItem({
@@ -395,7 +449,7 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final glass = Glass.bar;
+    final glass = Glass.barOf(context);
 
     return Pressable(
       onTap: onTap,
@@ -412,16 +466,19 @@ class _NavItem extends StatelessWidget {
           // A see through pane cannot guarantee contrast, so each glyph carries
           // its own halo. This is what lets the tint stay low enough to read the
           // backdrop through the bar.
-          final halo = <Shadow>[
-            Shadow(color: glass.glyphShadow, blurRadius: 5),
-            if (t > 0)
-              Shadow(
-                color: glass.indicatorGlow.withValues(
-                  alpha: glass.indicatorGlow.a * t,
-                ),
-                blurRadius: 14 * t,
-              ),
-          ];
+          //
+          // Tight, not wide, and one shadow rather than two. At blurRadius 5 the
+          // halo was a soft cloud around every glyph, and five soft clouds on a
+          // translucent pane add up to the haze the pane is trying not to have. At
+          // 2 it reads as the glyph standing off the surface, and it buys more
+          // contrast per unit of haze because the darkness lands next to the
+          // stroke instead of spread across the slot.
+          //
+          // The selected glyph used to carry a second, brand coloured glow on top.
+          // That was the same mistake the capsule was making, at a smaller size:
+          // selection announced by added light rather than by the material. The
+          // capsule's rim says it now.
+          final halo = <Shadow>[Shadow(color: glass.glyphShadow, blurRadius: 2)];
 
           return Transform.translate(
             offset: Offset(0, Motion.amount(context, -1.5) * t),

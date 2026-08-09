@@ -155,6 +155,27 @@ abstract final class Layout {
 
   /// Minimum tap target on every platform.
   static const double minTapTarget = 48;
+
+  /// Bottom padding a scrolling screen needs so its content can clear the
+  /// floating navigation bar.
+  ///
+  /// The bar is 68 logical pixels tall and floats 16 above the bottom edge, so it
+  /// covers the lowest 84 pixels of the screen. A scrollable padded by less than
+  /// that can never bring its final row out from under the bar, however far the
+  /// user scrolls - the row stays permanently half covered.
+  ///
+  /// Which is what was happening. Screens were padded by 40. A reviewer studying a
+  /// render of the navigation bar measured the bottom edge cutting a transaction
+  /// row through the middle of its capitals, leaving 11 pixels of a 31 pixel cap
+  /// height, and pointed out that this was a layout fault rather than anything the
+  /// glass was doing: no tint or refraction can rescue a row the bar is sitting on.
+  /// It was invisible in every previous round because the argument was about the
+  /// material and nobody had asked what the material was covering up.
+  ///
+  /// 84 plus a 16 pixel breathing gap. Deliberately not `Space` - this is a
+  /// measurement of a specific widget, and it has to move when that widget's height
+  /// does.
+  static const double navBarClearance = 100;
 }
 
 /// Semantic design tokens for one brightness.
