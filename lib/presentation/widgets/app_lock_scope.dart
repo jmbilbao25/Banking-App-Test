@@ -12,10 +12,20 @@ import 'brand.dart';
 /// Two requirements are served here. Requirement 5.4 re-locks after 120 seconds
 /// or more in the background, measured across a process death because the
 /// timestamp is written to Persistence_Store. Requirement 5.5 obscures
-/// authenticated content in the task switcher preview: Android also sets
-/// FLAG_SECURE natively, and painting a cover whenever the application is not
-/// resumed gives iOS the same behaviour, since the system snapshots the window
-/// after it leaves the foreground.
+/// authenticated content in the task switcher preview, and the cover painted here
+/// is now the whole of how that is done, on both platforms.
+///
+/// Android used to add FLAG_SECURE natively as well. It was removed on purpose:
+/// 5.5 asks for the task switcher preview and FLAG_SECURE additionally blocked
+/// screenshots and screen recording everywhere in the application, which was never
+/// required and left the build impossible to demonstrate. See MainActivity.kt for
+/// the full account and for how to restore it.
+///
+/// So this cover carries 5.5 by itself, which raises the stakes on one detail: it
+/// has to be in the frame the system snapshots. The system takes that snapshot
+/// after the window leaves the foreground, and the lifecycle callback below arrives
+/// before that, so the ordering holds - but it is an ordering rather than an
+/// enforcement, which is why the cover never animates in.
 class AppLockScope extends ConsumerStatefulWidget {
   const AppLockScope({required this.child, super.key});
 
