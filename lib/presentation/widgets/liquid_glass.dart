@@ -5,12 +5,30 @@ import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
 import '../../core/design/glass.dart';
 
-/// A refracting glass pane.
+/// A refracting glass pane. **The navigation bar, and nothing else.**
 ///
-/// This is the one glass surface in the application. Chrome that floats over
-/// scrolling content and cards that sit on the brand backdrop are the same
-/// material at two tiers, resolved through [Glass.of] and [Glass.panelOf]; see
-/// [Glass] for the layer order and for why the tiers differ.
+/// The material comes in two realisations, and which one a surface gets is a
+/// performance decision rather than a design one:
+///
+///   * this widget, a real lens: it samples the live backdrop and refracts it
+///     through a fragment shader, and it is the only thing in the application
+///     that reads the backdrop at all
+///   * [FrostPane], the same recipe painted: the same washes, the same bloom, the
+///     same sheen, an edge that is a stroke instead of an optical border, and no
+///     backdrop read of any kind
+///
+/// Everything that used to be a lens is now a [FrostPane]. The lens survives on
+/// the navigation bar because that is the one surface where the effect earns its
+/// cost: it is the only pane with live, moving, unknown content passing behind it,
+/// which is the single condition under which refraction shows you anything a
+/// painted gradient could not. A pane on the brand backdrop refracts a gradient
+/// it already knows, and a shader that displaces a smooth gradient by a few
+/// pixels produces a slightly different smooth gradient. That is the whole
+/// argument: the panels were paying for an optical effect with nothing to be
+/// optical about.
+///
+/// Both tiers are resolved through [Glass.of] and [Glass.panelOf]; see [Glass]
+/// for the layer order and for why the tiers differ.
 ///
 /// The refraction is a real lens. The backdrop is sampled against a signed
 /// distance field of this pane's own shape, so the displacement is concentrated
@@ -204,6 +222,183 @@ class LiquidGlass extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The glass recipe, painted rather than refracted.
+///
+/// Every surface in the application except the navigation bar. See [LiquidGlass]
+/// for why the split exists.
+///
+/// What this keeps, because it is what actually identifies the material: the
+/// scrim and lift washes, the specular bloom off the implied light source, the
+/// diagonal sheen across the upper half, the drop shadow, and an edge.
+///
+/// What it gives up, and what that costs:
+///
+///   * **The refraction.** Nothing behind the pane is displaced. On the brand
+///     backdrop this is close to invisible, because what was being displaced was
+///     a smooth gradient.
+///   * **The blur.** [Glass.blur] is exactly 1 on both tiers - walked down from 11
+///     through 3 and 1.5 over several rounds, for reasons the recipe documents at
+///     length - so a sigma of one is what is being given up here. It is not the
+///     part anyone was looking at.
+///   * **The rim's background tinting.** The shader's optical border took its hue
+///     from whatever was behind the pane, which a stroke cannot do. In exchange
+///     the stroke can be single sided, which the optical border could not: see
+///     [Glass.rimAmbient] on why that border is symmetric top to bottom and why a
+///     reviewer read the symmetry as an outline rather than a light. A painted rim
+///     lit from above, dim at the sides, with a bounce underneath, is the shape a
+///     lit edge actually has, and [Glass] already carries the three colours for
+///     it.
+///
+/// Collapses to the same opaque fill as the lens when the platform asks for
+/// reduced transparency, so that path is unchanged.
+class FrostPane extends StatelessWidget {
+  const FrostPane({
+    required this.child,
+    required this.radius,
+    this.recipe,
+    this.bloomAlignment = const Alignment(-0.7, -1),
+    super.key,
+  });
+
+  final Widget child;
+
+  /// Corner radius of the pane. One value rather than a [BorderRadius], for the
+  /// same reason the lens takes one: every surface here is uniformly rounded, and
+  /// the clip, the washes and the rim have to agree on the shape or the corner
+  /// shows a seam.
+  final double radius;
+
+  /// Overrides the tier resolved from brightness.
+  final Glass? recipe;
+
+  /// Where the implied light source sits, in the pane's own coordinates.
+  final Alignment bloomAlignment;
+
+  @override
+  Widget build(BuildContext context) {
+    final glass = recipe ?? Glass.of(context);
+    final border = BorderRadius.circular(radius);
+
+    if (Glass.isReduced(context)) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: glass.fallback,
+          borderRadius: border,
+          border: Border.all(color: glass.rimDim),
+          boxShadow: [
+            BoxShadow(
+              color: glass.shadow,
+              blurRadius: glass.shadowBlur,
+              offset: glass.shadowOffset,
+            ),
+          ],
+        ),
+        child: child,
+      );
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: border,
+        boxShadow: [
+          BoxShadow(
+            color: glass.shadow,
+            blurRadius: glass.shadowBlur,
+            offset: glass.shadowOffset,
+          ),
+        ],
+      ),
+      // The lens clipped its own child; a painted pane has to do it itself, and
+      // the washes are the reason - they are drawn to the full rectangle, so
+      // without this they square off the corners the shadow just rounded.
+      child: ClipRRect(
+        borderRadius: border,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _GlassBodyPainter(
+                    glass: glass,
+                    bloomAlignment: bloomAlignment,
+                  ),
+                ),
+              ),
+            ),
+
+            child,
+
+            // Both marks sit over the content, so a glyph parked against the edge
+            // cannot swallow the reflection or cut the rim.
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _GlassSheenPainter(
+                    glass: glass,
+                    borderRadius: border,
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _GlassRimPainter(glass: glass, borderRadius: border),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The edge, for a pane with no shader to draw one.
+///
+/// A single stroke carrying three colours: [Glass.rimTop] where the light lands,
+/// [Glass.rimDim] along the sides where it only grazes, [Glass.rimBottom] for the
+/// bounce off whatever the pane is sitting on. That is a lit edge rather than an
+/// outline, which is the distinction [Glass.rimAmbient] spends a page failing to
+/// buy from the optical border.
+class _GlassRimPainter extends CustomPainter {
+  const _GlassRimPainter({required this.glass, required this.borderRadius});
+
+  final Glass glass;
+  final BorderRadius borderRadius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final width = glass.rimWidth;
+    if (width <= 0 || size.isEmpty) return;
+
+    final rect = Offset.zero & size;
+    // Inset by half the stroke. A stroke centred on the shape's own edge loses
+    // its outer half to the clip, which halves the rim and leaves the corners
+    // reading as a smudge rather than a line.
+    final shape = borderRadius.toRRect(rect).deflate(width / 2);
+
+    canvas.drawRRect(
+      shape,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width
+        ..shader = ui.Gradient.linear(
+          rect.topCenter,
+          rect.bottomCenter,
+          [glass.rimTop, glass.rimDim, glass.rimBottom],
+          // Weighted to the top. The lit edge is a narrow event and the sides are
+          // most of the perimeter, so an even split reads as a uniform outline.
+          const [0, 0.45, 1],
+        ),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _GlassRimPainter old) =>
+      old.glass != glass || old.borderRadius != borderRadius;
 }
 
 class _GlassBodyPainter extends CustomPainter {

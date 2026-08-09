@@ -158,7 +158,7 @@ class _OpeningAdModalState extends State<OpeningAdModal>
           },
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420, maxHeight: 620),
-            child: LiquidGlass(
+            child: FrostPane(
               radius: AppRadius.xl,
               recipe: frame,
               child: Column(
