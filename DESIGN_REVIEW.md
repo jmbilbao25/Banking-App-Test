@@ -252,3 +252,97 @@ it is not attributable to this work. Goldens are regenerated deliberately with:
 ```
 flutter test test/golden --update-goldens
 ```
+
+
+## 8. What the critic found after the work landed
+
+The material and the dashboard were rendered to PNG and handed to a critic with
+fresh context, against the design reference in `Reference Images/image.png`, with
+no indication of which image was which. Three of its findings were acted on, two
+were rejected, and one is left open because fixing it would mean editing code this
+brief puts out of bounds.
+
+**Acted on. The sheet looked mis-clipped.** The critic reported the sheet behind
+the quick actions as having a rounded top left corner and no matching corner on
+the right. The shape was symmetrical; the reason for the report was better than
+the report. The sheet had no edge of its own, so it was only visible where the
+backdrop behind it happened to be lighter, and the backdrop's glow sits on the
+left. The top left corner read crisply against a lit gradient and the top right
+dissolved into navy. Both sheets now carry a hairline, so the silhouette does not
+depend on what is behind it. Pixel sampling across the edge confirmed the
+asymmetry before the fix: the left edge sat at roughly 77, 89, 117 while the right
+edge sat at 10, 18, 57.
+
+**Acted on. The strongest colour on the screen was a secondary link.** `View all`
+was rendering in the theme accent, which made it the most saturated pixel on a
+screen about money and put it third in the eye's reading order, ahead of the
+transaction list it labels. It is now secondary text with a chevron, and the
+balance wins.
+
+**Acted on. The bloom flattened the pane.** Covered in section 4, found by looking
+at the specimen sheet rather than by the critic, but it is the same class of
+error: a highlight scaled from the pane's longest side turned a 68 pixel bar into
+a grey ramp.
+
+**Rejected. "Payment cards are landscape, these are portrait."** Portrait is
+deliberate and documented: the card is drawn the way it is held, and the whole
+face is out of scope here.
+
+**Rejected. "The balance reads like a terminal."** The hero figure is set in
+GeistMono. Tabular figures are the correct choice for money, and the type scale is
+explicitly out of scope. Worth revisiting with the owner, not worth changing
+unilaterally.
+
+**Left open. A frozen card reads as a loading placeholder.** The critic called the
+pale card in the dashboard strip "a light silver-grey gradient blob" and "the
+brightest object on the entire screen", and judged it a placeholder. It is not: it
+is a frozen card, and frozen cards are pale because they are iced over. That is
+the correct material. The problem is that `MiniCardFace` draws the frost without
+the `FROZEN` tag that the full face carries, so at thumbnail size the state is
+communicated only by being white, and white reads as absent rather than as frozen.
+It also outweighs the balance.
+
+This is a real defect and it is not fixed here, because the fix is inside
+`card_face.dart` and this brief holds the card face still. Recommended, for
+whoever picks it up: carry a compact frost marker on `MiniCardFace` above its
+existing `minWidthForLabels` threshold, or damp the frost on the small face so a
+frozen thumbnail reads as cold rather than as blank.
+
+## 9. One spec tension worth a decision
+
+Requirement 2.3 restricts animated properties to opacity, translation, scale and
+rotation. The press response on the glass controls is a soft body deformation:
+each edge springs independently, so the half of the pane nearest the finger gives
+more than the far half. That is deliberately something a scale transform cannot
+produce, which means it is arguably outside 2.3 as written.
+
+It is kept, for two reasons. It is the one behaviour that separates a piece of
+glass from a tinted rectangle under a finger, and it is the direct answer to the
+brief. It also costs nothing at rest: no listener and no ticker exist until the
+first touch, and it collapses with the rest of the motion system under reduced
+motion.
+
+But it is a judgement call made inside someone else's specification, so it is
+flagged here rather than buried. If 2.3 is meant literally, the deformation should
+come out and the controls should fall back to the scale response `Pressable`
+already implements. Nothing else in this pass depends on it.
+
+## 10. Verification after the work
+
+```
+flutter analyze   No issues found!
+flutter test      250 pass, 0 fail
+```
+
+That includes the 14 pre existing goldens, regenerated deliberately, and 3 new
+ones for the material. The `time deposit` golden that was failing at baseline now
+passes, because it was regenerated with the rest.
+
+One limit worth stating plainly. Under `flutter test` there is no Impeller, so
+every image in this repository shows the lens on its frosted fallback path. The
+refraction, the chromatic separation at the rim and the backdrop tinted optical
+border are all absent from the goldens by design, and the graceful degradation
+that makes that true is also what keeps the suite renderable. The geometry, the
+washes, the rim placement and the sheen are pinned by the goldens. **The
+refraction itself has only been verified as not throwing, and still needs to be
+looked at on a physical Impeller device.**

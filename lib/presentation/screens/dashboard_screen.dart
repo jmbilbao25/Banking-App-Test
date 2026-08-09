@@ -77,6 +77,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       borderRadius: BorderRadius.vertical(
                         top: Radius.circular(AppRadius.xl),
                       ),
+                      // A hairline along the top edge, so the sheet has a
+                      // silhouette of its own. Without it the edge only shows
+                      // where the backdrop behind it happens to be lighter, and
+                      // the backdrop's glow sits on the left: the top left corner
+                      // read crisply while the top right dissolved into navy,
+                      // which made a symmetrical shape look mis-clipped.
+                      border: Border(
+                        top: BorderSide(
+                          color: tokens.textOnBrand.withValues(alpha: 0.1),
+                        ),
+                      ),
                       // One soft shadow, so the sheet reads as sitting over the
                       // gradient rather than being cut out of it.
                       boxShadow: [
@@ -688,9 +699,24 @@ class _RecentTransactions extends ConsumerWidget {
       children: [
         SectionHeader(
           title: 'Transactions',
+          // Deliberately not the accent. The accent marks what is currently
+          // active, and this is a link to another screen. Left at the theme's
+          // accent it was the most saturated pixel on the dashboard, so the
+          // strongest colour on a screen about money was spent on a secondary
+          // control and it beat the balance for attention. The affordance comes
+          // from the chevron and from sitting on the heading row.
           action: TextButton(
             onPressed: () => context.go('/activity'),
-            child: const Text('View all'),
+            style: TextButton.styleFrom(
+              foregroundColor: context.tokens.textSecondary,
+            ),
+            child: const Row(
+              children: [
+                Text('View all'),
+                SizedBox(width: Space.x1),
+                Icon(Icons.chevron_right_rounded, size: 16),
+              ],
+            ),
           ),
         ),
         AsyncSection<List<Txn>>(

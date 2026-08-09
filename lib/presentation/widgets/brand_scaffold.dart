@@ -134,6 +134,14 @@ class BrandScreenScaffold extends StatelessWidget {
               borderRadius: BorderRadius.vertical(
                 top: Radius.circular(AppRadius.xl),
               ),
+              // A hairline along the top edge, so the sheet keeps a silhouette
+              // wherever the backdrop behind it is light or dark. The dashboard
+              // carries the same line for the same reason.
+              border: Border(
+                top: BorderSide(
+                  color: tokens.textOnBrand.withValues(alpha: 0.1),
+                ),
+              ),
               boxShadow: [
                 BoxShadow(
                   color: tokens.shadow.withValues(alpha: 0.18),

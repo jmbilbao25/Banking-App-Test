@@ -12,7 +12,7 @@ Run checks with `/projects/toolchain/bin/fl flutter analyze` and `/projects/tool
 | Check | Start | Now |
 | --- | --- | --- |
 | `flutter analyze` | 19 issues | **0 issues** |
-| `flutter test` | 44 pass / 3 fail | **247 pass / 0 fail** |
+| `flutter test` | 44 pass / 3 fail | **250 pass / 0 fail** |
 | Credentials in source (Req 5.9) | 3 live | **0** |
 | PIN bypass | accepted on every screen | **removed** |
 | Em or en dash in UI copy (Req 25.1) | 6 | **0** |
@@ -24,7 +24,10 @@ Run checks with `/projects/toolchain/bin/fl flutter analyze` and `/projects/tool
 | Screens on one header scaffold | 0 | **5** |
 | Task screens with a primary action | 2 of 3 | **3 of 3** |
 | All-caps UI labels in app chrome | 5 | **0** |
-| Golden regression screens | 0 | **14** |
+| Golden regression screens | 0 | **17** |
+| Glass materials in the app | 3 (pane, panel, icon control) | **1 at two tiers** |
+| Refraction on the chrome | even scale, no edge bend | **shape refraction on an SDF** |
+| Overscroll behaviour under a backdrop pane | platform default, renders black at the edge | **stretch indicator disabled** |
 
 ## Wave status
 
@@ -208,3 +211,69 @@ gradient before the test existed.
   unchanged, but the coverage is inferred rather than asserted.
 - The web build warns that `CupertinoIcons` is referenced but not bundled. It
   comes from a dependency, nothing renders a Cupertino glyph, but it is untraced.
+
+
+## Wave: FrostBank 2.0, the glass
+
+Full findings, what was rejected and why, and the open items are in
+`DESIGN_REVIEW.md`. The short version.
+
+**The chrome blurred but did not refract.** The pane built its lens by laying a
+`BackdropFilter` out larger than itself and scaling it back down, with
+`lensX 0.9` and `lensY 0.6`. A uniform scale about the centre displaces in
+proportion to distance from the middle. Real glass concentrates almost all of its
+displacement into a narrow band hugging the edge and leaves the centre alone, so
+the old pane read as a squashed photograph behind a grey sheet. The blur was not
+helping, it was erasing the only thing that made it glass.
+
+`Glass` now carries lens tokens (`lensBend`, `lensBand`, `lensZoom`,
+`lensAberration`) and `LiquidGlass` samples the backdrop against a signed distance
+field of its own shape, through `liquid_glass_easy`. It keeps the scrim, lift,
+bloom and sheen, which are what make the material frost rather than generic glass,
+and hands the rim to the shader, which can tint itself from whatever is behind the
+pane. Five strokes and a band became one stroke and a band.
+
+**There were three glasses, now there is one.** `LiquidGlass` had exactly one
+usage. `GlassPanel` was a flat sigma 16 blur with a white fill, used in eight
+files. `GlassIconButton` was a white 0.12 fill with a border. All three are now the
+same pane, at a chrome tier and a panel tier.
+
+**Two bugs the upgrade would otherwise have shipped.** Android's stretch overscroll
+lifts a scrollable into its own layer at the edges, and a pane sampling the
+backdrop then renders black; five lists run under the bar and there was no
+`ScrollConfiguration` anywhere in `lib/`. And a `Stack` inside the pane sizes to
+its content, which collapsed `GlassIconButton` to the width of its glyph and took
+the tap target from 48 to 20. The accessibility suite caught the second one.
+
+**One bug that was already there.** The opening advertisement only persisted its
+dismissal from the `Skip` control and the call to action, so closing it on the
+barrier or with the back gesture let it return on the next dashboard mount.
+
+**Motion.** No new repeating animation, so Req 2.6 still holds at one plus the
+bounded shimmer. The advertisement gained a one shot entrance it did not have, on
+opacity and translation inside the medium band. The glass controls give under a
+finger, which allocates nothing until the first touch. That deformation is a
+soft body response rather than a scale, which is a tension with Req 2.3 and is
+flagged for a decision in `DESIGN_REVIEW.md` section 9 rather than left implicit.
+
+**The dashboard earns its fold.** The search field is gone: it was a second entry
+point to the query the Activity screen owns, one tap away in the bar below, and it
+cost 60 logical pixels at the top of the most visited screen. Three transactions
+now sit above the fold where the first row used to land at roughly y 720. `View
+all` is no longer the most saturated pixel on a screen about money.
+
+**Both sheets have a silhouette.** They had no edge of their own, so they were
+only visible where the backdrop behind them was lighter, and the glow sits left.
+The top left corner read crisply and the top right dissolved, which made a
+symmetrical shape look mis-clipped.
+
+**Three new goldens, for the material itself.** All 14 existing goldens pump a
+screen directly rather than through the shell, so not one of them contained the
+navigation bar. The most visible piece of glass in the application had no visual
+coverage, which is how it drifted into looking like a slab without anything
+failing.
+
+**Not verified.** `flutter test` has no Impeller, so every golden shows the lens on
+its frosted fallback path. The refraction, the rim's backdrop tinting and the
+chromatic separation are absent from the images by design. They have been verified
+as not throwing, and still need to be looked at on a device.
