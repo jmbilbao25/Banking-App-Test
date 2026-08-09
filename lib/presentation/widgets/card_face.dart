@@ -574,6 +574,29 @@ class NetworkMark extends StatelessWidget {
 class _MastercardPainter extends CustomPainter {
   const _MastercardPainter();
 
+  static final Paint _red = Paint()..color = _Scheme.mastercardRed;
+  static final Paint _yellow = Paint()..color = _Scheme.mastercardYellow;
+  static final Paint _overlap = Paint()..color = _Scheme.mastercardOverlap;
+
+  /// The overlap, kept between paints.
+  ///
+  /// [Path.combine] is a geometry solve, and this mark sits on a card face that
+  /// re-rasterises with the deck: it was running the boolean every time the layer
+  /// was redrawn to produce a shape that only depends on the size.
+  static Size? _shapeSize;
+  static Path? _shape;
+
+  static Path _overlapFor(Rect left, Rect right, Size size) {
+    final cached = _shape;
+    if (cached != null && _shapeSize == size) return cached;
+    _shapeSize = size;
+    return _shape = Path.combine(
+      PathOperation.intersect,
+      Path()..addOval(left),
+      Path()..addOval(right),
+    );
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     // Circle diameter is the full height, so the published width to height
@@ -583,16 +606,9 @@ class _MastercardPainter extends CustomPainter {
     final right = Rect.fromCircle(center: Offset(size.width - r, r), radius: r);
 
     canvas
-      ..drawOval(left, Paint()..color = _Scheme.mastercardRed)
-      ..drawOval(right, Paint()..color = _Scheme.mastercardYellow)
-      ..drawPath(
-        Path.combine(
-          PathOperation.intersect,
-          Path()..addOval(left),
-          Path()..addOval(right),
-        ),
-        Paint()..color = _Scheme.mastercardOverlap,
-      );
+      ..drawOval(left, _red)
+      ..drawOval(right, _yellow)
+      ..drawPath(_overlapFor(left, right, size), _overlap);
   }
 
   @override
@@ -717,6 +733,73 @@ const List<_Crystal> _frostCrystals = [
   _Crystal(0.28, 0.95, 0.037, 0.65, 0.64),
 ];
 
+/// The fills of a card face that are a function of its size and its product, and
+/// of nothing that moves.
+class _FaceLayers {
+  const _FaceLayers({
+    required this.fall,
+    required this.bloom,
+    required this.light,
+    required this.lightBand,
+    required this.vignette,
+  });
+
+  factory _FaceLayers.build(Size size, CardColourway colourway) {
+    final rect = Offset.zero & size;
+    return _FaceLayers(
+      fall: Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: colourway.fall,
+          stops: Palette.cardFaceStops,
+        ).createShader(rect),
+      bloom: Paint()
+        ..shader = ui.Gradient.radial(
+          Offset(size.width * 0.16, -size.height * 0.04),
+          size.width * 1.05,
+          [
+            Palette.frostIceWhite.withValues(alpha: 0.52),
+            Palette.frostIcePale.withValues(alpha: 0.16),
+            Palette.frostIcePale.withValues(alpha: 0),
+          ],
+          const [0, 0.42, 1],
+        ),
+      light: Paint()
+        ..shader = ui.Gradient.radial(
+          Offset(size.width * 1.02, size.height * 0.16),
+          size.width * 0.8,
+          [
+            colourway.light.withValues(alpha: 0.55),
+            colourway.lightFade.withValues(alpha: 0.2),
+            colourway.lightFade.withValues(alpha: 0),
+          ],
+          const [0, 0.5, 1],
+        ),
+      lightBand: Rect.fromLTWH(0, 0, size.width, size.height * 0.5),
+      vignette: Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.center,
+          end: Alignment.bottomCenter,
+          colors: [
+            Palette.cardVoid.withValues(alpha: 0),
+            Palette.cardVoid.withValues(alpha: 0.55),
+          ],
+        ).createShader(rect),
+    );
+  }
+
+  final Paint fall;
+  final Paint bloom;
+  final Paint light;
+
+  /// The light from the right is held inside the colour band rather than run over
+  /// the whole face, so it carries its own rectangle.
+  final Rect lightBand;
+
+  final Paint vignette;
+}
+
 class _CardFacePainter extends CustomPainter {
   /// The animated face. Passing the drive to [CustomPainter.repaint] is what lets
   /// a tick repaint without a build or a layout pass.
@@ -783,85 +866,68 @@ class _CardFacePainter extends CustomPainter {
   /// scribble at that size and are not worth the path.
   final bool needles;
 
+  /// The four fills that describe the product rather than the moment, built once
+  /// per size and colourway and then shared.
+  ///
+  /// This painter repaints on every frame of the freeze, because the drive is
+  /// wired to [CustomPainter.repaint], and a new one is built on every frame of a
+  /// swipe, because the sheen moves. Building a gradient allocates a native
+  /// object, and these four do not depend on either the frost or the sheen: there
+  /// are three colourways in the application and a handful of face sizes, so
+  /// almost every frame was rebuilding shaders it had already built.
+  static final Map<(Size, CardColourway), _FaceLayers> _layerCache = {};
+
+  static _FaceLayers _layersFor(Size size, CardColourway colourway) {
+    final key = (size, colourway);
+    final hit = _layerCache[key];
+    if (hit != null) return hit;
+    // Three colourways against the deck, the thumbnail and the back, so the live
+    // set is small. The clear is a backstop against a face whose size changes
+    // continuously, which would otherwise grow this without bound.
+    if (_layerCache.length >= 12) _layerCache.clear();
+    return _layerCache[key] = _FaceLayers.build(size, colourway);
+  }
+
+  /// The travelling highlight. Cached per painter rather than shared, because
+  /// [sheen] is what moves; it is final, so one instance only ever needs one.
+  Paint? _specular;
+  Size? _specularSize;
+
+  Paint _specularFor(Rect rect) {
+    final cached = _specular;
+    if (cached != null && _specularSize == rect.size) return cached;
+    _specularSize = rect.size;
+    final x = sheen * 0.9;
+    return _specular = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment(x - 1.4, -1),
+        end: Alignment(x + 0.6, 1),
+        colors: [
+          Colors.white.withValues(alpha: 0),
+          Colors.white.withValues(alpha: 0.13),
+          Colors.white.withValues(alpha: 0),
+        ],
+        stops: const [0.34, 0.5, 0.66],
+      ).createShader(rect);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
+    final layers = _layersFor(size, colourway);
 
-    // The fall. Colour in the top third, near black below the mark.
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: colourway.fall,
-          stops: Palette.cardFaceStops,
-        ).createShader(rect),
-    );
-
-    // Ice bloom off the top left corner, so the colour band is not a flat ramp.
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = ui.Gradient.radial(
-          Offset(size.width * 0.16, -size.height * 0.04),
-          size.width * 1.05,
-          [
-            Palette.frostIceWhite.withValues(alpha: 0.52),
-            Palette.frostIcePale.withValues(alpha: 0.16),
-            Palette.frostIcePale.withValues(alpha: 0),
-          ],
-          const [0, 0.42, 1],
-        ),
-    );
-
-    // Cool light entering from the right, held inside the colour band.
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.width, size.height * 0.5),
-      Paint()
-        ..shader = ui.Gradient.radial(
-          Offset(size.width * 1.02, size.height * 0.16),
-          size.width * 0.8,
-          [
-            colourway.light.withValues(alpha: 0.55),
-            colourway.lightFade.withValues(alpha: 0.2),
-            colourway.lightFade.withValues(alpha: 0),
-          ],
-          const [0, 0.5, 1],
-        ),
-    );
-
-    // Bottom vignette. Pulls the lower half further down so the mark holds.
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.center,
-          end: Alignment.bottomCenter,
-          colors: [
-            Palette.cardVoid.withValues(alpha: 0),
-            Palette.cardVoid.withValues(alpha: 0.55),
-          ],
-        ).createShader(rect),
-    );
-
-    // Specular sheen. Travels with the swipe, so the face reads as a hard
-    // surface catching light rather than a printed gradient.
-    final x = sheen * 0.9;
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment(x - 1.4, -1),
-          end: Alignment(x + 0.6, 1),
-          colors: [
-            Colors.white.withValues(alpha: 0),
-            Colors.white.withValues(alpha: 0.13),
-            Colors.white.withValues(alpha: 0),
-          ],
-          stops: const [0.34, 0.5, 0.66],
-        ).createShader(rect),
-    );
+    canvas
+      // The fall. Colour in the top third, near black below the mark.
+      ..drawRect(rect, layers.fall)
+      // Ice bloom off the top left corner, so the colour band is not a flat ramp.
+      ..drawRect(rect, layers.bloom)
+      // Cool light entering from the right, held inside the colour band.
+      ..drawRect(layers.lightBand, layers.light)
+      // Bottom vignette. Pulls the lower half further down so the mark holds.
+      ..drawRect(rect, layers.vignette)
+      // Specular sheen. Travels with the swipe, so the face reads as a hard
+      // surface catching light rather than a printed gradient.
+      ..drawRect(rect, _specularFor(rect));
 
     if (_frost <= 0) return;
     _paintFrost(canvas, size, rect);

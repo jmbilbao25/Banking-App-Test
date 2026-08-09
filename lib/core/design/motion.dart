@@ -34,11 +34,20 @@ abstract final class Motion {
   static const Curve linear = Curves.linear;
 
   /// True when the platform asks for less animation.
-  static bool isReduced(BuildContext context) {
-    final media = MediaQuery.maybeOf(context);
-    if (media == null) return false;
-    return media.disableAnimations || media.accessibleNavigation;
-  }
+  ///
+  /// Reads the two flags as aspects rather than taking the whole
+  /// [MediaQueryData]. `MediaQuery.maybeOf` subscribes the calling widget to
+  /// every field on the data, so a widget asking only whether animation is
+  /// wanted was also rebuilding on any change to the size, the padding, the text
+  /// scale, or the view insets. The insets are the expensive one: they change on
+  /// every frame of the keyboard opening, and this is called from
+  /// [resolve], [stagger] and [amount] all over the tree - so raising the
+  /// keyboard on a form rebuilt every animated widget and every glass pane on
+  /// the screen, sixty times a second, to answer a question whose answer had not
+  /// changed. As aspects, these rebuild only when the flags themselves flip.
+  static bool isReduced(BuildContext context) =>
+      (MediaQuery.maybeDisableAnimationsOf(context) ?? false) ||
+      (MediaQuery.maybeAccessibleNavigationOf(context) ?? false);
 
   /// Collapses a duration to zero under reduced motion so transitions render
   /// their end state immediately.

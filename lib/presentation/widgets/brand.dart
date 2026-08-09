@@ -167,23 +167,59 @@ class _FrostGlyphPainter extends CustomPainter {
 
 /// The layered gradient recipe shared by the mark and every brand surface.
 abstract final class FrostGradients {
+  /// Draws the recipe into [rect].
+  ///
+  /// The five shaders are built once per geometry and then reused. This matters
+  /// more here than anywhere else in the application: [FrostBackdrop] is the root
+  /// of fourteen screens, so these are five full screen fills, and building a
+  /// `ui.Gradient` allocates a native object every time. The recipe is a pure
+  /// function of the rectangle and the glow, so anything that repaints the
+  /// backdrop at the same size was rebuilding five identical shaders per frame.
   static void paintLayers(Canvas canvas, Rect rect, {double glow = 1}) {
     if (rect.isEmpty || rect.width <= 0 || rect.height <= 0) return;
+    for (final layer in _layersFor(rect, glow)) {
+      canvas.drawRect(rect, layer);
+    }
+  }
 
-    final base = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Palette.frostBaseTop, Palette.frostBaseBottom],
-      ).createShader(rect);
-    canvas.drawRect(rect, base);
+  /// Cached layers, most recently used last.
+  ///
+  /// A list rather than a single entry because the mark and the backdrop paint at
+  /// different sizes in the same frame, and a one deep cache would thrash between
+  /// them. Small and bounded: the application has a handful of distinct backdrop
+  /// geometries at any moment, and the entries are shaders, not images.
+  static final List<_FrostLayers> _cache = <_FrostLayers>[];
+
+  static const int _cacheLimit = 8;
+
+  static List<Paint> _layersFor(Rect rect, double glow) {
+    for (var index = _cache.length - 1; index >= 0; index--) {
+      final entry = _cache[index];
+      if (entry.rect == rect && entry.glow == glow) return entry.paints;
+    }
+
+    final paints = _buildLayers(rect, glow);
+    _cache.add(_FrostLayers(rect, glow, paints));
+    if (_cache.length > _cacheLimit) _cache.removeAt(0);
+    return paints;
+  }
+
+  static List<Paint> _buildLayers(Rect rect, double glow) {
+    final layers = <Paint>[
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Palette.frostBaseTop, Palette.frostBaseBottom],
+        ).createShader(rect),
+    ];
 
     final reach = math.max(rect.width, rect.height);
-    if (reach <= 0) return;
+    if (reach <= 0) return layers;
 
     // Bottom left icy bloom, the signal colour of the brand.
     _radial(
-      canvas,
+      layers,
       rect,
       center: Offset(
         rect.left + rect.width * 0.12,
@@ -202,7 +238,7 @@ abstract final class FrostGradients {
 
     // Top right cool light.
     _radial(
-      canvas,
+      layers,
       rect,
       center: Offset(
         rect.left + rect.width * 0.96,
@@ -220,7 +256,7 @@ abstract final class FrostGradients {
 
     // Deep violet shadow that keeps the right side from going flat.
     _radial(
-      canvas,
+      layers,
       rect,
       center: Offset(
         rect.left + rect.width * 0.9,
@@ -237,7 +273,7 @@ abstract final class FrostGradients {
 
     // Centre lift.
     _radial(
-      canvas,
+      layers,
       rect,
       center: rect.center,
       radius: reach * 0.46,
@@ -247,10 +283,12 @@ abstract final class FrostGradients {
         Palette.frostLift.withValues(alpha: 0),
       ],
     );
+
+    return layers;
   }
 
   static void _radial(
-    Canvas canvas,
+    List<Paint> layers,
     Rect rect, {
     required Offset center,
     required double radius,
@@ -258,10 +296,19 @@ abstract final class FrostGradients {
     required List<Color> colors,
   }) {
     if (radius <= 0 || radius.isNaN || radius.isInfinite) return;
-    final paint = Paint()
-      ..shader = ui.Gradient.radial(center, radius, colors, stops);
-    canvas.drawRect(rect, paint);
+    layers.add(
+      Paint()..shader = ui.Gradient.radial(center, radius, colors, stops),
+    );
   }
+}
+
+/// One geometry's worth of built layers.
+class _FrostLayers {
+  const _FrostLayers(this.rect, this.glow, this.paints);
+
+  final Rect rect;
+  final double glow;
+  final List<Paint> paints;
 }
 
 /// Brand backdrop for the splash, the sign in screen, and the dashboard header.
@@ -282,9 +329,32 @@ class FrostBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surface = CustomPaint(
-      painter: _BackdropPainter(glow: glow),
-      child: child,
+    // The backdrop is a sibling of the content behind it rather than a painter
+    // wrapped around it, and both halves get their own layer.
+    //
+    // The recipe is five fills the size of the screen and this widget is the root
+    // of fourteen screens, so it is the largest single piece of painting in the
+    // application. As one CustomPaint with the content as its child, the two
+    // shared a layer: anything that repainted in the content - a scroll frame, an
+    // entrance animation, a glass pane resolving - redrew all five fills
+    // underneath it, every frame. Split apart, the content repaints on its own,
+    // and the backdrop's raster is a candidate for the raster cache because it is
+    // a leaf that only changes when its size or its glow does.
+    //
+    // StackFit.passthrough is load bearing: it hands the parent's constraints to
+    // the content unchanged, which is what the CustomPaint used to do. Under the
+    // default loose fit, a screen whose content expands to fill the viewport would
+    // collapse to its intrinsic height instead.
+    final surface = Stack(
+      fit: StackFit.passthrough,
+      children: [
+        Positioned.fill(
+          child: RepaintBoundary(
+            child: CustomPaint(painter: _BackdropPainter(glow: glow)),
+          ),
+        ),
+        RepaintBoundary(child: child),
+      ],
     );
     if (borderRadius == null) return surface;
     return ClipRRect(borderRadius: borderRadius!, child: surface);
