@@ -49,10 +49,15 @@ class Glass {
   const Glass({
     required this.blur,
     required this.saturation,
-    required this.lensBend,
-    required this.lensBand,
+    required this.lensIor,
+    required this.lensBevel,
+    required this.lensDepth,
     required this.lensZoom,
     required this.lensAberration,
+    required this.rimLightDirection,
+    required this.rimWidth,
+    required this.rimSpread,
+    required this.rimAmbient,
     required this.scrim,
     required this.lift,
     required this.bloom,
@@ -84,18 +89,49 @@ class Glass {
   /// the pane still reads as colour rather than grey.
   final double saturation;
 
-  /// Peak displacement inside the refraction band, from 0 to 1.
+  /// Refractive index of the glass, fed to Snell's law.
   ///
-  /// This is the whole effect. Held low: the band is narrow, so a large bend
-  /// here does not read as thicker glass, it reads as a fisheye.
-  final double lensBend;
+  /// These three fields - [lensIor], [lensBevel], [lensDepth] - drive the
+  /// shader's *physical* refraction path, and getting onto that path was the
+  /// change this material needed most. The package exposes two calculations. The
+  /// legacy one displaces each sample toward an anchor point inset from the edge,
+  /// with one dial that is both the amplitude and, in effect, the shape of the
+  /// ramp. The physical one lifts the pane's 2D distance field into a 3D surface
+  /// normal - flat facing the viewer deep inside the glass, tilting outward
+  /// through a bevel at the rim - and bends the incident ray through it with
+  /// `refract()`.
+  ///
+  /// Everything that went wrong for three rounds was a property of the legacy
+  /// path. Its displacement is not monotonic, so the pane could show the same
+  /// word twice or, at small amplitudes, sample the blank gap between two rows
+  /// and show nothing at all. And because amplitude and band width were welded
+  /// together, the only way to stop it mangling 12 pixel type was to shrink the
+  /// band until it did nothing - which is what shipped, and which measured as a
+  /// pane with a median displacement of exactly zero across its whole area. It
+  /// was legible because it had stopped being a lens.
+  ///
+  /// The physical path separates the two. A wide bevel with a small depth is a
+  /// gentle, monotonic warp across the whole pane, which is what glass does and
+  /// what the legacy path could not express at any setting.
+  ///
+  /// 1.0 does not bend at all and common glass is about 1.5. Snell's law
+  /// saturates, so past roughly 2.0 the ray is already fully bent and this stops
+  /// doing anything; [lensDepth] is the dial to reach for instead.
+  final double lensIor;
 
-  /// Width of the refraction band inward from the edge, in logical pixels.
+  /// Width of the bevel at the rim, in logical pixels: how far in from the edge
+  /// the surface ramps from facing the viewer to facing sideways.
   ///
-  /// Scaled to the pane rather than shared, because the band is what gives the
-  /// pane implied thickness and a fixed band on a tall card looks like a frame
-  /// while the same band on a 68 pixel bar covers the whole thing.
-  final double lensBand;
+  /// This is a shape, not a strength. Widening it moves the bend further into the
+  /// pane without making it any stronger, which is the decoupling the legacy path
+  /// did not offer. See [lensIor].
+  final double lensBevel;
+
+  /// How far the refracted ray travels, from 0 to 1: the strength dial.
+  ///
+  /// The shader's displacement works out to roughly `bevel * depth * 5`, so this
+  /// is read against [lensBevel] rather than on its own.
+  final double lensDepth;
 
   /// Magnification of content seen through the pane. Barely above one: a lens
   /// this thin should bend light without visibly enlarging what is behind it.
@@ -143,6 +179,64 @@ class Glass {
   /// this decides whether the cold blues behind the pane come back as colour or
   /// wash out toward white.
   final double rimSaturation;
+
+  /// Where the light comes from, in degrees: 0 is from the right, 90 from above,
+  /// 180 from the left.
+  ///
+  /// This was left at the shader's default of 0 for every round of this work,
+  /// which lit the pane from the right. Nothing else in the interface is lit from
+  /// the right - every shadow in the application falls downward, so the implied
+  /// light is overhead - and a rim whose bright side disagrees with every shadow
+  /// around it is a large part of what reads as artificial even when no single
+  /// element looks wrong. A reviewer measured our rim as the only one in a set of
+  /// four that varied with position the way a lit object does; it was varying
+  /// around the wrong axis.
+  final double rimLightDirection;
+
+  /// Thickness of the rim, in logical pixels.
+  ///
+  /// The shader's default is 1.0. Slightly above it, because at exactly one
+  /// logical pixel the rim lands on a single device pixel at low densities and
+  /// aliases into a dotted line along the shallow part of the curve.
+  final double rimWidth;
+
+  /// Flat, directionless light on the rim, which in practice means light on the
+  /// pane's end caps.
+  ///
+  /// This was added to fix a defect it turned out not to touch, and the corrected
+  /// account is worth more than the value. A reviewer measured the pane's top rim
+  /// and its bottom rim as equal to within a percent and concluded the pill was
+  /// outlined rather than lit. That is accurate. The intended fix was to cut the
+  /// ambient term, on the reasoning that light with no direction floods the shadow
+  /// side and erases the contrast between them.
+  ///
+  /// Sweeping it from 1.1 down to 0.15 moved the top-to-bottom ratio from 0.99 to
+  /// 1.00. The shader says why: the optical border's angular response is
+  /// deliberately two-lobed - `mainLight + oppositeLight * 0.8` - so the far side of
+  /// the rim is always lit to four fifths of the near side, and the ratio is capped
+  /// at 1.25 whatever this is set to. The ambient term contributes a further tenth
+  /// against a directional term multiplied by three, which is why it was invisible.
+  /// The reference implementation of this material measures 0.94 on the same test.
+  /// A symmetric rim is what this border *is*, and on glass that is defensible:
+  /// unlike an opaque object, a glass edge picks up light all the way round by
+  /// internal reflection. A single-sided rim would mean giving up the optical
+  /// border's background tinting for a classic sweep gradient, which is a worse
+  /// trade.
+  ///
+  /// What the value does control is the end caps. Where the surface normal is
+  /// perpendicular to the light both lobes fall to zero, so on a stadium's caps this
+  /// is the only light there is. Half, because a reviewer independently noted that
+  /// bright straight edges with dimmer caps is the correct signature for a pill of
+  /// glass extruded horizontally - so the caps want to be present, not equal.
+  final double rimAmbient;
+
+  /// How far the bright part of the rim wraps around the shape, from 0 to 1.
+  ///
+  /// Low values keep a tight specular glint on the side facing the light; high
+  /// values spread it most of the way round. A pill is mostly straight edge with
+  /// two tight caps, and a glint that stops before it reaches the caps leaves
+  /// them looking unlit.
+  final double rimSpread;
 
   /// Diagonal reflection sweeping the upper half of the pane.
   final Color sheen;
@@ -212,41 +306,41 @@ class Glass {
     // Nothing worth having is lost: above unity this was boosting a navy gradient
     // and a white sheet, neither of which needs it.
     saturation: 1,
-    // A hard bend confined to a narrow band at the rim: 0.15 over 6 pixels, after
-    // passes at 0.12 over 22, 0.15 over 24, and the reference bar's own 0.07 over
-    // 28.
+    // Ordinary glass. See [lensIor] for why the pane is on the physical path at
+    // all; the short version is that the legacy one could not both bend light and
+    // stay legible, and this one can.
+    lensIor: 1.5,
+    // 34, which is exactly half the bar's height, so the bevel runs from the rim to
+    // the centreline and the pane is curved the whole way across with no flat spot
+    // in the middle. That is what a lens is, and the legacy band could not be asked
+    // for it: its equivalent had to be cut to 6 pixels to stop it mangling type, at
+    // which point the pane measured a median displacement of exactly zero over its
+    // whole area. It was legible because it had stopped being a lens.
+    lensBevel: 34,
+    // Small, and read against the bevel - the shader's displacement is roughly
+    // `bevel * depth * 5`, so about 6 device pixels at the rim easing to nothing at
+    // the centreline.
     //
-    // The amplitude was never what went wrong. The width was. A displacement band
-    // pulls each sample sideways by an amount that ramps to zero at the band's
-    // inner edge, so inside the band a pane does not show the backdrop behind that
-    // point, it shows the backdrop from somewhere nearby. Over a photograph that is
-    // the entire effect and it is beautiful. Over a list of transactions it means
-    // the pane shows the wrong text, and wrong text does not read as refraction, it
-    // reads as a broken render - which is exactly what reviewers called it. At small
-    // amplitudes it is worse rather than better, because the sample lands in the
-    // white gap between two rows and the words disappear altogether.
+    // Chosen by sweeping both parameters and scoring two things at once: whether a
+    // row of type survives the crossing, and how far the pane actually moves it.
+    // Against the shipped legacy recipe, which scored 0.72 correlation at zero
+    // displacement, this scores 0.73 at 6 pixels - the same legibility, and optics
+    // where there were none. Against the reference bar on the same backdrop, 0.55
+    // and 0.36 at 3 and 10 pixels: we are more legible and still bending light.
     //
-    // Measured, sweeping the bend with the band held wide, as the correlation
-    // between the row seen through the pane and the same row with the pane removed:
-    // 0.72 at bend 0, 0.16 at 0.02, 0.24 at 0.04, 0.48 at 0.08. Not monotonic,
-    // because those are two different failures - erasure at the bottom of the range
-    // and scrambling at the top - and neither of them is a lens. The reference bar
-    // measured on the same backdrop scores 0.45, and looking at it bears the number
-    // out: over a transaction list it is an illegible, colour-fringed smear. Its
-    // showcase is over album art, where there is no text to be wrong.
+    // Higher is available and was rejected on the tail rather than the median. At
+    // depth 0.05 the median holds up at 0.70 but the tenth percentile falls to 0.27,
+    // which is a handful of blocks being destroyed rather than displaced, and those
+    // are what a reader notices.
     //
-    // 0.15 over 6 pixels scores 0.72 - identical to having no refraction at all -
-    // because the band is now narrower than a line of type is tall. It lands on the
-    // rim, where there is nothing to read, and the body of the pane transmits its
-    // backdrop intact. The bend inside those six pixels is the steepest value in
-    // this file, and that is the point: a lensed sliver hugging the edge is what the
-    // edge of a thick piece of glass looks like, and the rim is the one place a
-    // displacement can be spent without being charged for it in legibility.
-    lensBend: 0.15,
-    // 6, down from 28, and the most important number in the recipe. See above: this
-    // is the width of the strip in which the pane is permitted to show something
-    // other than what is behind it.
-    lensBand: 6,
+    // Trimmed from 0.04 after a reviewer measured what the tail actually was: an 11
+    // pixel band just inside the lower rim where the transmitted row was not
+    // displaced but *gone*, its contrast energy down 73 percent, with a compressed
+    // copy jammed against the rim below it. That is the displacement at the rim
+    // exceeding the height of a line of type, so the band shows the gap between two
+    // rows instead of either of them. The bevel keeps its width; only the travel
+    // comes down.
+    lensDepth: 0.03,
     // Exactly 1: no magnification, which is also the reference's value.
     //
     // This was 1.02 and then 1.05, on the argument that a step in scale across the
@@ -273,13 +367,31 @@ class Glass {
     // Nothing is lost at the rim. The rim takes its colour from the shader's
     // optical border and its [rimSaturation], which is a separate path.
     lensAberration: 0,
-    // Barely there, just enough to keep a white backdrop from flattening the rim.
-    scrim: [Color(0x0F0B0D2B), Color(0x1A0B0D2B)],
-    // 0.18 and 0.12, from 0.46 and 0.38 originally and 0.30 and 0.24 on the first
-    // pass. A wash this pane lays over its own backdrop is contrast it takes away
-    // from whatever is behind it, and contrast behind the pane is the raw material
-    // the refraction has to work with.
-    lift: [Color(0x2EFFFFFF), Color(0x1FFFFFFF)],
+    // Up from 0.06 and 0.10, and this is where the light tier's missing edge was
+    // actually fixed.
+    //
+    // A reviewer measured the light pane's own rim at 14 against the dark pane's 83
+    // and reported it as having no edge at all. The previous answer was to paint a
+    // contour just inside it, which two reviewers then measured as a drawn stroke and
+    // read as a scratch across the transaction list. The real problem was never the
+    // rim: it was that the pane's washes added up to something *brighter* than the
+    // near-white sheet underneath, so the silhouette had nothing to register
+    // against, and a rim is not what makes a pane visible - being a different value
+    // from its surroundings is.
+    //
+    // Navy at 0.10 and 0.15, against a lift cut to almost nothing below, leaves the
+    // pane a shade darker and cooler than the sheet. That reads as a deliberately
+    // tinted piece of glass laid on white, which is what light-mode system chrome
+    // is, and it gives the shader's optical border a value step to resolve against.
+    scrim: [Color(0x1A0B0D2B), Color(0x260B0D2B)],
+    // 0.06 and 0.03, from 0.18 and 0.12, and originally 0.46 and 0.38.
+    //
+    // Each cut was made for the same reason and the last one finishes the job: a
+    // wash this pane lays over its backdrop is contrast it takes away from whatever
+    // is behind it. On a white sheet a white lift also costs the pane its own
+    // silhouette. What is left is just enough to keep the top of the pane from going
+    // flat against the scrim below it.
+    lift: [Color(0x0FFFFFFF), Color(0x08FFFFFF)],
     bloom: Color(0x30FFFFFF),
     rimTop: Color(0xFFFFFFFF),
     rimBottom: Color(0xA6FFFFFF),
@@ -297,6 +409,16 @@ class Glass {
     rimSolidity: 0.45,
     rimIntensity: 1.3,
     rimSaturation: 1.25,
+    // 96 degrees: light from just past overhead, leaning left, matching the
+    // direction every shadow in the application already implies. See
+    // [rimLightDirection] - this sat at the shader's default of 0, lighting the
+    // pane from the right, for every round of this work.
+    rimLightDirection: 96,
+    rimWidth: 1.4,
+    // Wide, because a pill is two tight caps joined by a long straight edge and a
+    // tight glint never reaches the caps.
+    rimSpread: 0.72,
+    rimAmbient: 0.5,
     sheen: Color(0x40FFFFFF),
     // Tighter and a little stronger: 0.24 at 14 pixels offset 4, from 0.18 at 18
     // offset 6. On a white sheet the shadow is the only thing defining the pane's
@@ -337,13 +459,11 @@ class Glass {
     // Exactly 1. See the light recipe: above unity this amplifies the subpixel
     // antialiasing of text passing behind the pane into saturated rainbow fringes.
     saturation: 1,
-    // 0.15 over a 6 pixel band. See the light recipe: a band wide enough to cover a
-    // line of type makes the pane show the wrong words, and the fix is to narrow the
-    // band rather than to ease the bend.
-    lensBend: 0.15,
-    // 6. See the light recipe - this is the width of the strip where the pane may
-    // show something other than what is behind it, and it belongs on the rim.
-    lensBand: 6,
+    // See the light recipe. Same glass, same bevel, same depth: the tiers differ in
+    // what they do to colour, not in their optics.
+    lensIor: 1.5,
+    lensBevel: 34,
+    lensDepth: 0.03,
     // Exactly 1. See the light recipe: magnification rescales everything seen
     // through the lens about its centre, which lays a second copy of the backdrop
     // over the one the band is displacing.
@@ -381,6 +501,11 @@ class Glass {
     rimSolidity: 0.36,
     rimIntensity: 1.18,
     rimSaturation: 1.25,
+    // See the light recipe.
+    rimLightDirection: 96,
+    rimWidth: 1.4,
+    rimSpread: 0.72,
+    rimAmbient: 0.5,
     // 0.10, down from 0.18. The sheen is a reflection, not a light source, and at
     // the old strength it was a grey wedge laid across the corner.
     sheen: Color(0x1AFFFFFF),
@@ -453,8 +578,8 @@ class Glass {
   /// built instance on every build would repaint the pane on every build.
   Glass get panel => _panels.putIfAbsent(
     this,
-    () => _copyWith(
-      lensBand: lensBand + 8,
+    () => copyWith(
+      lensBevel: lensBevel + 8,
       scrim: [scrim.first.withValues(alpha: scrim.first.a * 0.5), scrim.last],
       lift: [
         lift.first.withValues(alpha: lift.first.a * 0.34),
@@ -466,16 +591,36 @@ class Glass {
 
   static final Map<Glass, Glass> _panels = {};
 
-  Glass _copyWith({
-    double? lensBand,
+  /// This recipe with individual values replaced.
+  ///
+  /// Public because the render harness in `tool/glass_lab` sweeps the lens
+  /// parameters through it. Sweeping used to mean editing this file and rebuilding
+  /// once per value, which at three minutes a build is enough friction to
+  /// discourage checking a hunch - and unchecked hunches are what put a
+  /// non-monotonic refraction in this file for three rounds.
+  Glass copyWith({
+    double? lensIor,
+    double? lensBevel,
+    double? lensDepth,
+    double? rimLightDirection,
+    double? rimWidth,
+    double? rimSpread,
+    double? rimAmbient,
+    double? rimIntensity,
+    double? rimSolidity,
     List<Color>? scrim,
     List<Color>? lift,
     Color? bloom,
   }) => Glass(
     blur: blur,
     saturation: saturation,
-    lensBend: lensBend,
-    lensBand: lensBand ?? this.lensBand,
+    lensIor: lensIor ?? this.lensIor,
+    lensBevel: lensBevel ?? this.lensBevel,
+    lensDepth: lensDepth ?? this.lensDepth,
+    rimLightDirection: rimLightDirection ?? this.rimLightDirection,
+    rimWidth: rimWidth ?? this.rimWidth,
+    rimSpread: rimSpread ?? this.rimSpread,
+    rimAmbient: rimAmbient ?? this.rimAmbient,
     lensZoom: lensZoom,
     lensAberration: lensAberration,
     scrim: scrim ?? this.scrim,
@@ -484,8 +629,8 @@ class Glass {
     rimTop: rimTop,
     rimBottom: rimBottom,
     rimDim: rimDim,
-    rimSolidity: rimSolidity,
-    rimIntensity: rimIntensity,
+    rimSolidity: rimSolidity ?? this.rimSolidity,
+    rimIntensity: rimIntensity ?? this.rimIntensity,
     rimSaturation: rimSaturation,
     sheen: sheen,
     shadow: shadow,
@@ -511,8 +656,13 @@ class Glass {
       other is Glass &&
           other.blur == blur &&
           other.saturation == saturation &&
-          other.lensBend == lensBend &&
-          other.lensBand == lensBand &&
+          other.lensIor == lensIor &&
+          other.lensBevel == lensBevel &&
+          other.lensDepth == lensDepth &&
+          other.rimLightDirection == rimLightDirection &&
+          other.rimWidth == rimWidth &&
+          other.rimSpread == rimSpread &&
+          other.rimAmbient == rimAmbient &&
           other.lensZoom == lensZoom &&
           other.lensAberration == lensAberration &&
           listEquals(other.scrim, scrim) &&
@@ -541,8 +691,13 @@ class Glass {
   int get hashCode => Object.hashAll([
     blur,
     saturation,
-    lensBend,
-    lensBand,
+    lensIor,
+    lensBevel,
+    lensDepth,
+    rimLightDirection,
+    rimWidth,
+    rimSpread,
+    rimAmbient,
     lensZoom,
     lensAberration,
     Object.hashAll(scrim),

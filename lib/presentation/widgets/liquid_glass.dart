@@ -102,6 +102,19 @@ class LiquidGlass extends StatelessWidget {
           shape: LiquidGlassShape.continuousRoundedRectangle(
             cornerRadius: radius,
             lightColor: glass.rimTop,
+            // See [Glass.rimLightDirection]. Left at the shader's default of 0 -
+            // light from the right - until a round spent looking for why a pane
+            // with defensible numbers still read as artificial.
+            lightDirection: glass.rimLightDirection,
+            borderWidth: glass.rimWidth,
+            // Radial rather than the default edge mode. Edge mode takes the
+            // surface normal from the shape's own gradient, which spreads the
+            // highlight along a straight edge; radial takes it from the centre
+            // outward, which carries the highlight around a curve instead. On a
+            // stadium the straight edges are most of the perimeter and the caps
+            // are where the eye looks for the glass to be thick, so the mode that
+            // lights curves is the right one here.
+            lightMode: LiquidGlassLightMode.radial,
             // Gain on the specular rim. The rim is where nearly all of the sense
             // of a lit, solid edge comes from, so it is worth pushing slightly
             // past unity.
@@ -116,11 +129,14 @@ class LiquidGlass extends StatelessWidget {
               borderSaturation: glass.rimSaturation,
               // Keeps the rim lit on the side facing away from the light, so the
               // pane never loses an edge against a dark backdrop.
-              ambientIntensity: 1.1,
+              // See [Glass.rimAmbient]. Above unity here is what made the rim
+              // an outline rather than a light.
+              ambientIntensity: glass.rimAmbient,
               // See [Glass.rimSolidity]. This was pinned at zero on the argument
               // that a solid rim is a border; at zero the rim never resolves into
               // a line at all and the pane loses its edge.
               borderSolidity: glass.rimSolidity,
+              lightSpread: glass.rimSpread,
             ),
           ),
           appearance: LiquidGlassAppearance(
@@ -132,14 +148,23 @@ class LiquidGlass extends StatelessWidget {
             color: const Color(0x00000000),
           ),
           refraction: LiquidGlassRefraction(
-            distortion: glass.lensBend,
-            distortionWidth: glass.lensBand,
             magnification: glass.lensZoom,
             chromaticAberration: glass.lensAberration,
             // Follows the contour of the shape rather than a circle centred on
             // the pane. On a stadium 68 pixels tall a radial pattern bends the
             // end caps and leaves the long edges flat.
             refractionMode: LiquidGlassRefractionMode.shapeRefraction,
+            // Snell's law through a bevelled edge, rather than the legacy
+            // anchor-based displacement this used to drive through `distortion`
+            // and `distortionWidth`. See [Glass.lensIor]: the legacy path cannot
+            // separate how hard it bends from how wide it bends, so the only
+            // setting that did not mangle small text was one narrow enough to do
+            // nothing measurable at all.
+            refractionType: OpticalRefraction(
+              refraction: glass.lensIor,
+              refractionWidth: glass.lensBevel,
+              depth: glass.lensDepth,
+            ),
           ),
         ),
         touch: flex == null ? null : LiquidGlassTouch(flex: flex),
@@ -263,32 +288,32 @@ class _GlassSheenPainter extends CustomPainter {
     canvas.save();
     canvas.clipRRect(shape);
 
-    // [Glass.rimDim] rather than a faded [Glass.rimTop], which is the difference
-    // between a pane that has an edge in both tiers and one that only has an edge
-    // in the dark.
+    // The inner hairline is gone, and it is worth recording why, because it was
+    // defended twice in this file.
     //
-    // rimTop is the specular colour, and in the light recipe it is pure white. A
-    // white hairline just inside a white rim, on a pane sitting over a white sheet,
-    // is three whites: reviewers reported the light bar as having no edge at all and
-    // reading as a slightly lighter card, and no amount of gain on the rim fixes
-    // that, because gain on white over white produces more white. rimDim is the
-    // edge colour appropriate to each tier - navy in the light recipe, white in the
-    // dark - so this contour darkens the inside of the edge over a bright backdrop
-    // and lightens it over a dark one, which is the sign a real edge changes with
-    // what is behind it.
-    final inner = glass.rimDim;
-    canvas.drawRRect(
-      shape.deflate(2.4),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..shader = ui.Gradient.linear(
-          rect.topCenter,
-          rect.center,
-          [inner, inner.withValues(alpha: 0)],
-          const [0, 1],
-        ),
-    );
+    // It was a one pixel stroke on `shape.deflate(2.4)`, fading out by the vertical
+    // midpoint, and the argument for it was that it gave the pane implied thickness
+    // behind its own rim. Last round it was switched from a faded specular white to
+    // [Glass.rimDim] so that the light tier would have an edge over a white sheet,
+    // which made it stronger.
+    //
+    // Two reviewers then measured it independently, without knowing what it was,
+    // and both called it a defect. It sat 6 device pixels inside the true edge, ran
+    // at a constant amplitude across the entire span of the pane, and existed only
+    // along the top with no counterpart along the bottom. That constancy along x is
+    // the tell: an optical event on a stadium varies as the surface turns, and this
+    // did not vary at all, because it was a stroke. One reviewer called it "a
+    // scratch dragged across the customer's transaction list", and once named it is
+    // impossible to unsee - a straight bright rule crossing the middle of a
+    // merchant's name.
+    //
+    // Nothing replaces it. The shader's optical border draws the actual edge now,
+    // with a real width and a light direction, and implied thickness is what the
+    // bevel in [Glass.lensBevel] is for: a lens that bends light near its rim
+    // *shows* its thickness instead of having a line drawn where the thickness
+    // would be. The light tier's edge problem was real, and it is solved where it
+    // belonged - in the pane's own tint, which no longer lifts itself brighter than
+    // the sheet it floats on.
 
     // Reflection of the room. Narrow, off axis, and fading at both ends, so it
     // reads as light on a curved face rather than a stripe.

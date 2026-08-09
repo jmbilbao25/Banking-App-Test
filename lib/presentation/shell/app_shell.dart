@@ -64,11 +64,20 @@ class ShellNavBarPreview extends StatelessWidget {
     required this.activeBranch,
     this.onSelect,
     this.showContent = true,
+    this.recipe,
     super.key,
   });
 
   final int activeBranch;
   final ValueChanged<int>? onSelect;
+
+  /// Overrides the recipe the pane is drawn with.
+  ///
+  /// The harness sweeps the lens parameters through this. Without it a sweep means
+  /// editing the recipe and rebuilding once per value, and at three minutes a
+  /// build that is enough friction to discourage checking a hunch - which is how a
+  /// refraction that showed the same word twice survived three rounds.
+  final Glass? recipe;
 
   /// False renders the pane with nothing in it.
   ///
@@ -83,6 +92,7 @@ class ShellNavBarPreview extends StatelessWidget {
     activeBranch: activeBranch,
     onSelect: onSelect ?? (_) {},
     showContent: showContent,
+    recipe: recipe,
   );
 }
 
@@ -91,11 +101,13 @@ class _GlassNavBar extends StatelessWidget {
     required this.activeBranch,
     required this.onSelect,
     this.showContent = true,
+    this.recipe,
   });
 
   final int activeBranch;
   final ValueChanged<int> onSelect;
   final bool showContent;
+  final Glass? recipe;
 
   static const double _height = 68;
 
@@ -122,7 +134,7 @@ class _GlassNavBar extends StatelessWidget {
               radius: math.min(AppRadius.pill, _height / 2),
               // Follows the brightness. See Glass.barOf for why this used to be
               // pinned to the dark recipe and why that was the wrong call.
-              recipe: Glass.barOf(context),
+              recipe: recipe ?? Glass.barOf(context),
               child: !showContent
                   ? const SizedBox.expand()
                   : Stack(
@@ -304,15 +316,20 @@ class _SelectionCapsuleState extends State<_SelectionCapsule>
                             shape: LiquidGlassShape.continuousRoundedRectangle(
                               cornerRadius: radius,
                               lightColor: glass.indicatorRim,
-                              // Brighter and more solid than the pane's own rim.
-                              // The selected slot is a *nearer* piece of glass,
-                              // and a nearer edge catches more light. This rim is
-                              // the whole indicator now, so it has to carry.
-                              lightIntensity: 1.4,
+                              // A touch brighter than the pane's rim, not four
+                              // times it. The selected slot is a nearer piece of
+                              // glass and a nearer edge catches more light, which
+                              // was the argument for pushing this hard; what it
+                              // actually produced was a bright ring reviewers
+                              // measured at seven times the strength of the bar's
+                              // own edge and read as a sticker. A nearer piece of
+                              // glass is identified by transmitting and bending
+                              // more, not by being outlined harder.
+                              lightIntensity: 1.15,
                               borderType: const OpticalBorder(
                                 borderSaturation: 1.4,
                                 ambientIntensity: 1.2,
-                                borderSolidity: 0.55,
+                                borderSolidity: 0.4,
                               ),
                             ),
                             appearance: LiquidGlassAppearance(
@@ -341,22 +358,24 @@ class _SelectionCapsuleState extends State<_SelectionCapsule>
                               blur: const LiquidGlassBlur(sigmaX: 1, sigmaY: 1),
                             ),
                             refraction: const LiquidGlassRefraction(
-                              // The pane's own geometry, and for the pane's
-                              // reasons: a hard bend confined to a sliver at the
-                              // rim. See [Glass.light]'s lensBend. This was 0.18
-                              // over 9 pixels and then 0.12 over 14, and on a
-                              // capsule only 44 pixels wide a 14 pixel band is a
-                              // third of the object - it was showing the wrong
-                              // letters across most of its width, which is what
-                              // reviewers picked out as fringing on the one word
-                              // passing behind it.
+                              // Snell's law through a bevel, on the same physical
+                              // path as the pane and for the same reasons. See
+                              // [Glass.lensIor].
                               //
-                              // The capsule can afford a wider band than the pane
-                              // in proportion to its size, but not in absolute
-                              // pixels, because what has to fit inside the band is
-                              // a line of type either way.
-                              distortion: 0.15,
-                              distortionWidth: 6,
+                              // The bevel is half the capsule's own height, so its
+                              // curve runs from rim to centreline exactly as the
+                              // pane's does - the two are the same glass at two
+                              // sizes rather than two different materials. On the
+                              // legacy path this had to be a 6 pixel sliver, for
+                              // the same reason the pane did: anything wider showed
+                              // the wrong letters across most of a 44 pixel object,
+                              // which reviewers picked out as fringing on the one
+                              // word passing behind it.
+                              refractionType: OpticalRefraction(
+                                refraction: 1.5,
+                                refractionWidth: 22,
+                                depth: 0.03,
+                              ),
                               // No magnification, as on the pane. At 1.06 this laid
                               // a second, larger copy of the backdrop over the one
                               // the band was already displacing.

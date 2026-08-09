@@ -21,6 +21,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
+import 'package:mobile_bank_app/core/design/glass.dart';
 import 'package:mobile_bank_app/core/design/theme.dart';
 import 'package:mobile_bank_app/core/design/tokens.dart';
 import 'package:mobile_bank_app/core/design/typography.dart';
@@ -60,6 +61,32 @@ _Mode get _mode => switch (Uri.base.queryParameters['mode']) {
 /// in the same renderer and the same shot, makes the two panes differ in exactly
 /// one thing.
 bool get _refBar => Uri.base.queryParameters['bar'] == 'ref';
+
+/// `?ior=`, `?bevel=`, `?depth=`, `?lightdir=`, `?spread=` override the shipped
+/// recipe's lens and rim parameters for one shot.
+///
+/// This is what makes a sweep affordable. Each of these used to mean an edit and a
+/// three minute rebuild, so a hunch cost as much as a result, and the practical
+/// effect was that hunches went unchecked - which is how a refraction that could
+/// show the same word twice stayed in the recipe for three rounds. As query
+/// parameters, eight configurations cost one build.
+Glass? _recipeOverride(BuildContext context) {
+  final q = Uri.base.queryParameters;
+  const keys = ['ior', 'bevel', 'depth', 'lightdir', 'spread', 'ambient', 'rimint', 'rimsol'];
+  if (!keys.any(q.containsKey)) return null;
+
+  double? read(String k) => double.tryParse(q[k] ?? '');
+  return Glass.barOf(context).copyWith(
+    lensIor: read('ior'),
+    lensBevel: read('bevel'),
+    lensDepth: read('depth'),
+    rimLightDirection: read('lightdir'),
+    rimSpread: read('spread'),
+    rimAmbient: read('ambient'),
+    rimIntensity: read('rimint'),
+    rimSolidity: read('rimsol'),
+  );
+}
 
 class GlassLab extends StatelessWidget {
   const GlassLab({super.key});
@@ -158,6 +185,7 @@ class _Phone extends StatelessWidget {
                   child: ShellNavBarPreview(
                     activeBranch: 0,
                     showContent: _mode == _Mode.full,
+                    recipe: _recipeOverride(context),
                   ),
                 ),
               ),
