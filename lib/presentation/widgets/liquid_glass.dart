@@ -1,58 +1,76 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
+import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
 import '../../core/design/glass.dart';
 
-/// A refracting glass pane for chrome that floats over scrolling content.
+/// A refracting glass pane.
 ///
-/// This is the app shell surface. It differs from `GlassPanel` in `brand.dart`
-/// on purpose: `GlassPanel` is a flat frosted card that sits on the brand
-/// backdrop, where the colour behind it is known and fixed. [LiquidGlass] sits
-/// over live, moving, unknown content, so it carries the layers that make an
-/// edge readable against anything. See [Glass] for the layer order.
+/// This is the one glass surface in the application. Chrome that floats over
+/// scrolling content and cards that sit on the brand backdrop are the same
+/// material at two tiers, resolved through [Glass.of] and [Glass.panelOf]; see
+/// [Glass] for the layer order and for why the tiers differ.
 ///
-/// The refraction is one [BackdropFilter] laid out larger than the pane and
-/// scaled back down onto it. The layer therefore covers the pane exactly, but its
-/// local space is wider and taller, and that mismatch offsets the backdrop it
-/// samples. Because the offset is a scale about the centre, it is zero in the
-/// middle of the pane and grows toward the rim on its own, which is the way a
-/// thick lens bends light.
+/// The refraction is a real lens. The backdrop is sampled against a signed
+/// distance field of this pane's own shape, so the displacement is concentrated
+/// in a band that hugs the edge and the middle of the pane stays close to
+/// undistorted. An earlier version approximated it by laying a [BackdropFilter]
+/// out larger than the pane and scaling it back down. That bends light in
+/// proportion to distance from the centre, which is the wrong shape entirely: it
+/// reads as a squashed photograph behind a grey sheet rather than as an edge
+/// bending light, and no amount of blur or tint recovers it.
 ///
-/// Nothing inside the pane is clipped. An earlier version built the bezel from
-/// concentric rings, each with its own filter, and the boundaries between them
-/// read as a second solid shape sitting inside the glass. One continuous pass
-/// cannot produce that seam.
+/// On Impeller the lens samples the live backdrop with no setup. On Skia and on
+/// the web there is no live backdrop shader, so the lens degrades to a frosted
+/// blur and tint and the pane keeps its washes, its rim and its sheen. That
+/// degradation is also what lets the widget tests and the golden suite render it.
 ///
 /// Collapses to a single opaque fill when the platform asks for reduced
-/// transparency, so the chrome never becomes unreadable.
+/// transparency, so the interface never becomes unreadable.
 class LiquidGlass extends StatelessWidget {
   const LiquidGlass({
     required this.child,
-    required this.borderRadius,
+    required this.radius,
     this.recipe,
     this.bloomAlignment = const Alignment(-0.7, -1),
+    this.flex,
     super.key,
   });
 
   final Widget child;
-  final BorderRadius borderRadius;
 
-  /// Overrides the brightness resolved recipe. Rarely needed.
+  /// Corner radius of the pane. A single value rather than a [BorderRadius],
+  /// because the lens shape is described by one radius and every surface in the
+  /// application is uniformly rounded. Keeping them the same shape is the point:
+  /// a clip that disagrees with the shader leaves a visible seam at the corner.
+  final double radius;
+
+  /// Overrides the tier resolved from brightness. Rarely needed.
   final Glass? recipe;
 
   /// Where the implied light source sits, in the pane's own coordinates.
   final Alignment bloomAlignment;
 
+  /// Deformation under a finger, if this pane should answer touch directly.
+  ///
+  /// Null by default, and null costs nothing: no listener and no ticker are
+  /// added to the tree. Only set it on a pane with bounded constraints. The lens
+  /// measures its rest size from `constraints.biggest` in order to deform
+  /// against it, so a pane that sizes itself from its child would expand to fill
+  /// its parent the moment this is non null.
+  final LiquidGlassFlex? flex;
+
   @override
   Widget build(BuildContext context) {
     final glass = recipe ?? Glass.of(context);
+    final border = BorderRadius.circular(radius);
 
     if (Glass.isReduced(context)) {
       return DecoratedBox(
         decoration: BoxDecoration(
           color: glass.fallback,
-          borderRadius: borderRadius,
+          borderRadius: border,
           border: Border.all(color: glass.rimDim),
           boxShadow: [
             BoxShadow(
@@ -68,7 +86,7 @@ class LiquidGlass extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: borderRadius,
+        borderRadius: border,
         boxShadow: [
           BoxShadow(
             color: glass.shadow,
@@ -77,34 +95,78 @@ class LiquidGlass extends StatelessWidget {
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: borderRadius,
+      // The lens clips its own child to the lens shape, so there is no
+      // ClipRRect here. One shape, described once.
+      child: LiquidGlassLens(
+        style: LiquidGlassStyle(
+          shape: LiquidGlassShape.continuousRoundedRectangle(
+            cornerRadius: radius,
+            lightColor: glass.rimTop,
+            // The rim is the shader's, not a painter's, and that is the upgrade.
+            // A painted rim can only ever be the colour it was written as. This
+            // one takes its colour from whatever is currently behind the pane,
+            // which is what an edge of real glass does.
+            borderType: const OpticalBorder(
+              // Above one, so the cold blues the brand backdrop is made of come
+              // back saturated at the rim instead of washing to white.
+              borderSaturation: 1.4,
+              // Keeps the rim lit on the side facing away from the light, so the
+              // pane never loses an edge against a dark backdrop.
+              ambientIntensity: 1.1,
+              // Translucent. A solid rim is a border, and a border is the thing
+              // this whole surface is trying not to be.
+              borderSolidity: 0,
+            ),
+          ),
+          appearance: LiquidGlassAppearance(
+            saturation: glass.saturation,
+            blur: LiquidGlassBlur(sigmaX: glass.blur, sigmaY: glass.blur),
+            // The tint is the scrim and lift pair below, not a flat fill. One
+            // fill cannot both hold the pane under bright content and lift it
+            // above dark content.
+            color: const Color(0x00000000),
+          ),
+          refraction: LiquidGlassRefraction(
+            distortion: glass.lensBend,
+            distortionWidth: glass.lensBand,
+            magnification: glass.lensZoom,
+            chromaticAberration: glass.lensAberration,
+            // Follows the contour of the shape rather than a circle centred on
+            // the pane. On a stadium 68 pixels tall a radial pattern bends the
+            // end caps and leaves the long edges flat.
+            refractionMode: LiquidGlassRefractionMode.shapeRefraction,
+          ),
+        ),
+        touch: flex == null ? null : LiquidGlassTouch(flex: flex),
+        // The washes and the sheen are Positioned.fill rather than a
+        // StackFit.expand, so the only child that measures is the content. That
+        // is what lets one pane serve both a bar with a fixed height and a card
+        // that has to size itself to what is inside it.
         child: Stack(
-          fit: StackFit.expand,
           children: [
-            _Refraction(glass: glass),
-
-            IgnorePointer(
-              child: CustomPaint(
-                painter: _GlassBodyPainter(
-                  glass: glass,
-                  bloomAlignment: bloomAlignment,
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _GlassBodyPainter(
+                    glass: glass,
+                    bloomAlignment: bloomAlignment,
+                  ),
                 ),
-                child: const SizedBox.expand(),
               ),
             ),
 
             child,
 
             // Over the content, so a glyph parked against the edge cannot
-            // swallow the rim.
-            IgnorePointer(
-              child: CustomPaint(
-                painter: _GlassRimPainter(
-                  glass: glass,
-                  borderRadius: borderRadius,
+            // swallow the reflection.
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _GlassSheenPainter(
+                    glass: glass,
+                    borderRadius: border,
+                  ),
                 ),
-                child: const SizedBox.expand(),
               ),
             ),
           ],
@@ -112,32 +174,6 @@ class LiquidGlass extends StatelessWidget {
       ),
     );
   }
-}
-
-/// The single refraction pass.
-class _Refraction extends StatelessWidget {
-  const _Refraction({required this.glass});
-
-  final Glass glass;
-
-  @override
-  Widget build(BuildContext context) => Transform(
-    transform: Matrix4.diagonal3Values(glass.lensX, glass.lensY, 1),
-    alignment: Alignment.center,
-    child: FractionallySizedBox(
-      widthFactor: 1 / glass.lensX,
-      heightFactor: 1 / glass.lensY,
-      // A blur is the most expensive operation on this screen, and without its
-      // own layer it is re-rasterised whenever anything in the enclosing repaint
-      // region changes. The boundary confines that cost to the pane itself.
-      child: RepaintBoundary(
-        child: BackdropFilter(
-          filter: glass.filter,
-          child: const SizedBox.expand(),
-        ),
-      ),
-    ),
-  );
 }
 
 class _GlassBodyPainter extends CustomPainter {
@@ -183,20 +219,21 @@ class _GlassBodyPainter extends CustomPainter {
       old.glass != glass || old.bloomAlignment != bloomAlignment;
 }
 
-/// The lit edge of the pane, and the reflections on its face.
+/// What is left for a painter once the shader owns the rim.
 ///
-/// Five strokes and one band, in order:
+/// Two marks, both of which describe the *face* of the pane rather than its edge:
 ///
-///   1. the outer rim, graded from the top highlight through the grazing side
-///      colour to the bottom bounce. This grading is what reads as a lit glass
-///      edge rather than a drawn border
-///   2. a concentrated arc at the top left, where the light source sits
-///   3. a second, weaker arc at the bottom right, light bouncing back up
-///   4. an inner hairline that fades out by the vertical midpoint, which gives
-///      the pane implied thickness
-///   5. a diagonal sheen across the upper half, the reflection of the room
-class _GlassRimPainter extends CustomPainter {
-  const _GlassRimPainter({required this.glass, required this.borderRadius});
+///   1. an inner hairline that fades out by the vertical midpoint, which gives
+///      the pane implied thickness behind its own rim
+///   2. a diagonal sheen across the upper half, the reflection of the room
+///
+/// An earlier version also painted the outer rim and two blurred corner arcs.
+/// Those are now the shader's optical border, which can do the one thing a
+/// painter cannot: tint itself from the backdrop. Painting both left a doubled
+/// edge, and dropping them takes this from five strokes and a band down to one
+/// stroke and a band.
+class _GlassSheenPainter extends CustomPainter {
+  const _GlassSheenPainter({required this.glass, required this.borderRadius});
 
   final Glass glass;
   final BorderRadius borderRadius;
@@ -206,53 +243,8 @@ class _GlassRimPainter extends CustomPainter {
     final rect = Offset.zero & size;
     final shape = borderRadius.toRRect(rect);
 
-    canvas.drawRRect(
-      shape.deflate(0.6),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2
-        ..shader = ui.Gradient.linear(
-          rect.topCenter,
-          rect.bottomCenter,
-          [glass.rimTop, glass.rimDim, glass.rimBottom],
-          const [0, 0.55, 1],
-        ),
-    );
-
     canvas.save();
     canvas.clipRRect(shape);
-
-    void arc({
-      required Offset from,
-      required Offset to,
-      required double width,
-      required Color color,
-    }) {
-      canvas.drawRRect(
-        shape.deflate(0.6),
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = width
-          ..maskFilter = const MaskFilter.blur(ui.BlurStyle.normal, 2.5)
-          ..shader = ui.Gradient.linear(from, to, [
-            color,
-            color.withValues(alpha: 0),
-          ]),
-      );
-    }
-
-    arc(
-      from: rect.topLeft,
-      to: Offset(rect.width * 0.5, rect.top),
-      width: 3,
-      color: glass.rimTop,
-    );
-    arc(
-      from: rect.bottomRight,
-      to: Offset(rect.width * 0.55, rect.bottom),
-      width: 2.4,
-      color: glass.rimBottom,
-    );
 
     final inner = glass.rimTop.withValues(alpha: glass.rimTop.a * 0.3);
     canvas.drawRRect(
@@ -291,6 +283,6 @@ class _GlassRimPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _GlassRimPainter old) =>
+  bool shouldRepaint(covariant _GlassSheenPainter old) =>
       old.glass != glass || old.borderRadius != borderRadius;
 }

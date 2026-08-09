@@ -4,8 +4,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/design/glass.dart';
 import '../../core/design/tokens.dart';
 import '../../core/design/typography.dart';
+import 'liquid_glass.dart';
 
 /// Geometry of the FrostBank mark, transcribed one to one from the source SVG.
 ///
@@ -337,58 +339,36 @@ class FrostLockup extends StatelessWidget {
   }
 }
 
-/// Frosted glass surface used on brand backdrops. Falls back to a solid fill
-/// when the platform asks for reduced transparency.
+/// Frosted glass surface used on brand backdrops.
+///
+/// The same material as the application chrome, at the panel tier: see [Glass]
+/// for what the tiers change and why. It used to be a flat sigma 16
+/// [BackdropFilter] with a white fill and a white border, which meant the
+/// interface was made of two visibly different glasses depending on whether you
+/// were looking at a card or at the navigation bar. It is now one.
+///
+/// Reduced transparency is handled by [LiquidGlass] itself, which collapses to an
+/// opaque fill.
 class GlassPanel extends StatelessWidget {
   const GlassPanel({
     required this.child,
     this.padding = const EdgeInsets.all(Space.x5),
     this.radius = AppRadius.xl,
-    this.tint = 0.1,
     super.key,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
   final double radius;
-  final double tint;
 
   @override
-  Widget build(BuildContext context) {
-    final reduceTransparency =
-        MediaQuery.maybeOf(context)?.highContrast ?? false;
-    final border = BorderRadius.circular(radius);
-
-    final content = DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: border,
-        color: Colors.white.withValues(alpha: reduceTransparency ? 0.22 : tint),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
-        boxShadow: [
-          BoxShadow(
-            color: Palette.frostInk.withValues(alpha: 0.24),
-            blurRadius: 28,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
+  Widget build(BuildContext context) => RepaintBoundary(
+    child: LiquidGlass(
+      radius: radius,
+      recipe: Glass.panelOf(context),
       child: Padding(padding: padding, child: child),
-    );
-
-    if (reduceTransparency) return content;
-
-    // Confined to its own layer, so the blur is not re-rasterised every time
-    // something else in the enclosing repaint region changes.
-    return RepaintBoundary(
-      child: ClipRRect(
-        borderRadius: border,
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: content,
-        ),
-      ),
-    );
-  }
+    ),
+  );
 }
 
 /// Small frosted control on a brand backdrop, sized for a 48 pixel target.

@@ -35,7 +35,15 @@ class AppShell extends StatelessWidget {
     backgroundColor: context.tokens.backgroundAlt,
     // The body runs under the bar, which is the whole point of the glass.
     extendBody: true,
-    body: navigationShell,
+    // Android's stretch overscroll lifts a scrollable into its own layer at the
+    // scroll edges. A pane that samples the backdrop then has nothing to sample
+    // and renders black along the edge, which is a visible fault on every list
+    // that runs under the bar. Dropping the indicator keeps the platform physics
+    // and the scrollbars, and only gives up the stretch itself.
+    body: ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
+      child: navigationShell,
+    ),
     bottomNavigationBar: _GlassNavBar(
       activeBranch: navigationShell.currentIndex,
       onSelect: _go,
@@ -70,19 +78,14 @@ class _GlassNavBar extends StatelessWidget {
             child: LiquidGlass(
               // The pill token is a sentinel, not a measurement. Clamping it to
               // half the height gives the same stadium while keeping the radii
-              // well formed for the rim and capsule painters.
-              borderRadius: AppRadius.all(
-                math.min(AppRadius.pill, _height / 2),
-              ),
+              // well formed for the lens, the rim, and the capsule painter.
+              radius: math.min(AppRadius.pill, _height / 2),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
                   _SelectionCapsule(
                     slot: ShellDestinations.slotOf(activeBranch),
                     height: _height,
-                    // The dashboard is marked by the brand mark lighting up, so
-                    // the capsule stands down on that slot.
-                    visible: activeBranch != 0,
                   ),
                   Row(
                     children: [
@@ -126,20 +129,19 @@ class _GlassNavBar extends StatelessWidget {
 /// height, both peaking at the halfway point. The position itself overshoots on
 /// [Motion.settle] and comes back, so it arrives under its own weight. Both
 /// effects flatten to nothing under reduced motion, leaving a plain slide.
-/// The capsule still travels to the centre slot when the dashboard is selected,
-/// it just fades out on arrival, because the brand mark takes over as the
-/// indicator there. Keeping the travel and fading the paint means the return trip
-/// starts from the right place instead of appearing out of nowhere.
+///
+/// It marks all five slots, including the centre. The bar used to suppress it
+/// there and light the brand mark instead, which left selection with two
+/// grammars: a capsule on four slots and a glowing tile on the fifth. A glowing
+/// tile mounted in the middle of a bar reads as a primary action rather than as a
+/// location, so the mark now sits inside the same capsule as everything else and
+/// keeps only its lift, which acknowledges the tap without standing in for the
+/// indicator.
 class _SelectionCapsule extends StatefulWidget {
-  const _SelectionCapsule({
-    required this.slot,
-    required this.height,
-    required this.visible,
-  });
+  const _SelectionCapsule({required this.slot, required this.height});
 
   final int slot;
   final double height;
-  final bool visible;
 
   @override
   State<_SelectionCapsule> createState() => _SelectionCapsuleState();
@@ -195,26 +197,18 @@ class _SelectionCapsuleState extends State<_SelectionCapsule>
     final glass = Glass.of(context);
     final reducedGlass = Glass.isReduced(context);
 
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(end: widget.visible ? 1 : 0),
-      duration: Motion.resolve(context, Motion.medium),
-      curve: Motion.standard,
-      builder: (context, fade, _) => AnimatedBuilder(
-        animation: _travel,
-        builder: (context, _) => SizedBox.expand(
-          child: CustomPaint(
-            painter: _CapsulePainter(
-              from: _from,
-              to: _to.toDouble(),
-              progress: _travel.value,
-              opacity: fade,
-              stretch: Motion.amount(context, 1),
-              fill: glass.indicator,
-              rim: glass.indicatorRim,
-              glow: reducedGlass
-                  ? const Color(0x00000000)
-                  : glass.indicatorGlow,
-            ),
+    return AnimatedBuilder(
+      animation: _travel,
+      builder: (context, _) => SizedBox.expand(
+        child: CustomPaint(
+          painter: _CapsulePainter(
+            from: _from,
+            to: _to.toDouble(),
+            progress: _travel.value,
+            stretch: Motion.amount(context, 1),
+            fill: glass.indicator,
+            rim: glass.indicatorRim,
+            glow: reducedGlass ? const Color(0x00000000) : glass.indicatorGlow,
           ),
         ),
       ),
@@ -227,7 +221,6 @@ class _CapsulePainter extends CustomPainter {
     required this.from,
     required this.to,
     required this.progress,
-    required this.opacity,
     required this.stretch,
     required this.fill,
     required this.rim,
@@ -237,10 +230,6 @@ class _CapsulePainter extends CustomPainter {
   final double from;
   final double to;
   final double progress;
-
-  /// Scales every layer of the capsule, so it can hand the indicator role to the
-  /// brand mark on the centre slot.
-  final double opacity;
 
   /// Scales squash and stretch to zero under reduced motion.
   final double stretch;
@@ -256,19 +245,6 @@ class _CapsulePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (opacity <= 0.01) return;
-
-    // One layer for the whole capsule, so the fade is uniform. Scaling each
-    // layer's own alpha instead would let the rim outlive the fill and leave a
-    // floating outline behind.
-    final faded = opacity < 0.99;
-    if (faded) {
-      canvas.saveLayer(
-        null,
-        Paint()..color = Colors.black.withValues(alpha: opacity),
-      );
-    }
-
     final slotWidth = size.width / ShellDestinations.count;
     final restWidth = math.min(slotWidth - _inset, _maxWidth);
     final restHeight = size.height - _inset * 2;
@@ -341,8 +317,6 @@ class _CapsulePainter extends CustomPainter {
         ]),
     );
     canvas.restore();
-
-    if (faded) canvas.restore();
   }
 
   @override
@@ -350,7 +324,6 @@ class _CapsulePainter extends CustomPainter {
       old.progress != progress ||
       old.from != from ||
       old.to != to ||
-      old.opacity != opacity ||
       old.stretch != stretch ||
       old.rim != rim ||
       old.glow != glow;
