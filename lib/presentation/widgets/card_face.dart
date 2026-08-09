@@ -1330,3 +1330,312 @@ class CardValueSwap extends StatelessWidget {
     child: child,
   );
 }
+
+
+/// The back of the card.
+///
+/// Same material as the front, same colourway, same milled hairline, so the
+/// object that turns over is unmistakably the same object. What changes is what
+/// it carries: the four things that only exist on the back of a real card, laid
+/// out where a real card puts them. The magnetic stripe sits near the top, the
+/// signature panel under it with the security code at its right hand end, and the
+/// full number below in the same mono face the rest of the application sets
+/// figures in.
+///
+/// This widget renders whatever it is handed. It does not decide whether the
+/// holder is allowed to see it. That decision belongs to the screen, behind
+/// App_Lock, and requirement 13.8 puts a clock on it.
+class CardBackFace extends StatelessWidget {
+  const CardBackFace({
+    required this.card,
+    this.lift = 1,
+    this.radius = AppRadius.lg,
+    super.key,
+  });
+
+  final BankCard card;
+  final double lift;
+  final double radius;
+
+  /// The number in groups of four, whatever the stored string does about spacing.
+  String get _grouped {
+    final digits = card.number.replaceAll(RegExp(r'\D'), '');
+    final out = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && i % 4 == 0) out.write('  ');
+      out.write(digits[i]);
+    }
+    return out.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final border = BorderRadius.circular(radius);
+    final colourway = colourwayFor(card.id);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: border,
+        boxShadow: [
+          BoxShadow(
+            color: Palette.frostInk.withValues(alpha: 0.34 * lift),
+            blurRadius: 34 * lift,
+            spreadRadius: -4,
+            offset: Offset(0, 18 * lift),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: border,
+        child: CustomPaint(
+          painter: _CardFacePainter(
+            sheen: 0,
+            // The back of a frozen card is frozen too. Needles are off because
+            // they are drawn to sit around the mark, and there is no mark here.
+            frost: card.status == CardStatus.frozen ? 1 : 0,
+            radius: radius,
+            colourway: colourway,
+            needles: false,
+          ),
+          child: Stack(
+            fit: StackFit.passthrough,
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: border,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.14),
+                    ),
+                  ),
+                ),
+              ),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final w = constraints.maxWidth;
+                  final pad = w * 0.075;
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(height: pad),
+                      // Magnetic stripe. Full bleed, the way it is on a card.
+                      Container(
+                        height: w * 0.2,
+                        width: double.infinity,
+                        color: Palette.cardVoid.withValues(alpha: 0.82),
+                      ),
+                      SizedBox(height: pad * 0.9),
+                      // Signature panel, with the code at its right hand end.
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: pad),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                height: w * 0.13,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: w * 0.035,
+                                ),
+                                alignment: Alignment.centerLeft,
+                                decoration: BoxDecoration(
+                                  color: Palette.frostIcePale.withValues(
+                                    alpha: 0.9,
+                                  ),
+                                  borderRadius: BorderRadius.circular(w * 0.02),
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    card.holderName,
+                                    style: AppType.labelSmall.copyWith(
+                                      color: Palette.frostInk.withValues(
+                                        alpha: 0.7,
+                                      ),
+                                      fontSize: w * 0.06,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: w * 0.03),
+                            Container(
+                              height: w * 0.13,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: w * 0.03,
+                              ),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.94),
+                                borderRadius: BorderRadius.circular(w * 0.02),
+                              ),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  card.cvc,
+                                  style: AppType.numericSmall.copyWith(
+                                    color: Palette.frostInk,
+                                    fontSize: w * 0.07,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(pad, pad, pad, pad),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              // Centred in what is left rather than pinned under
+                              // the signature panel. The card is portrait, so
+                              // pinning it to the top left the lower half of the
+                              // face as one empty black rectangle, which reads as
+                              // unfinished rather than as a real card back.
+                              Expanded(
+                                child: Center(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                  Text(
+                                    'CARD NUMBER',
+                                    style: AppType.labelSmall.copyWith(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.56,
+                                      ),
+                                      fontSize: w * 0.042,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                  SizedBox(height: w * 0.02),
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          _grouped,
+                                          style: AppType.numericSmall.copyWith(
+                                            color: Colors.white,
+                                            fontSize: w * 0.095,
+                                            letterSpacing: 0.6,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'EXPIRES',
+                                        style: AppType.labelSmall.copyWith(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.56,
+                                          ),
+                                          fontSize: w * 0.042,
+                                          letterSpacing: 1.2,
+                                        ),
+                                      ),
+                                      SizedBox(height: w * 0.015),
+                                      Text(
+                                        card.expiry,
+                                        style: AppType.numericSmall.copyWith(
+                                          color: Colors.white,
+                                          fontSize: w * 0.065,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const Spacer(),
+                                  NetworkMark(network: card.network, width: w * 0.21),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Turns a card over.
+///
+/// State transition: the card rotates about its own vertical axis to show the
+/// side the holder asked for, so the details arrive on the object they belong to
+/// instead of in a panel somewhere else on the screen.
+///
+/// The visible side swaps at the halfway point, where the card is edge on and
+/// nothing can be read, and the incoming side is counter rotated so its type is
+/// never mirrored. Rotation is one of the four properties requirement 2.3 allows,
+/// and the whole thing is driven by an implicit tween, so there is no controller
+/// to leak and nothing repeats. Under reduced motion the correct side is rendered
+/// immediately with no rotation at all.
+class FlipCard extends StatelessWidget {
+  const FlipCard({
+    required this.showBack,
+    required this.front,
+    required this.back,
+    super.key,
+  });
+
+  final bool showBack;
+  final Widget front;
+  final Widget back;
+
+  @override
+  Widget build(BuildContext context) {
+    if (Motion.isReduced(context)) return showBack ? back : front;
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: showBack ? 1 : 0),
+      duration: Motion.medium,
+      // Linear, and it is the one motion in the application that should be.
+      //
+      // Every eased curve in the set front loads its value, and a flip is the one
+      // case where that is visible as a fault rather than as polish: on
+      // easeOutCubic the value crosses the halfway point at about a third of the
+      // duration, so the card showed its front for a third of the turn and spent
+      // the other two thirds bringing the back around. A physical card turned
+      // between finger and thumb has roughly constant angular velocity, and the
+      // side swap has to land in the middle of the run or the two halves are
+      // visibly different lengths. Linear is already in the named set, so this
+      // adds no fifth curve.
+      curve: Motion.linear,
+      builder: (context, t, _) {
+        final angle = t * math.pi;
+        final past = t >= 0.5;
+        final transform = Matrix4.identity()
+          // Perspective, so the turn has a near edge and a far edge rather than
+          // reading as a horizontal squash.
+          ..setEntry(3, 2, 0.0013)
+          ..rotateY(past ? angle - math.pi : angle);
+
+        return Transform(
+          alignment: Alignment.center,
+          transform: transform,
+          filterQuality: FilterQuality.medium,
+          child: past ? back : front,
+        );
+      },
+    );
+  }
+}

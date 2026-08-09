@@ -45,6 +45,26 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
     super.dispose();
   }
 
+  /// The one path in and out of the revealed state.
+  ///
+  /// Both the control in the app bar and a tap on the card itself come through
+  /// here, so there is exactly one place App_Lock is asked and exactly one place
+  /// the reveal clock is started. An earlier version had the gate inlined in the
+  /// app bar, which is the kind of thing that ends up with a second entry point
+  /// that forgot to ask.
+  Future<void> _toggleReveal() async {
+    if (_revealed) {
+      _mask();
+      return;
+    }
+    final ok = await confirmWithAppLock(
+      context,
+      ref,
+      reason: 'Confirm to reveal your full card number.',
+    );
+    if (ok && mounted) _reveal();
+  }
+
   void _reveal() {
     _remaskTimer?.cancel();
     setState(() => _revealed = true);
@@ -80,18 +100,7 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
         title: Text(widget.cardId.isEmpty ? 'Cards' : 'Card Details'),
         actions: [
           IconButton(
-            onPressed: () async {
-              if (_revealed) {
-                _mask();
-              } else {
-                final ok = await confirmWithAppLock(
-                  context,
-                  ref,
-                  reason: 'Confirm to reveal your full card number.',
-                );
-                if (ok && mounted) _reveal();
-              }
-            },
+            onPressed: _toggleReveal,
             tooltip: _revealed ? 'Hide card details' : 'Reveal card details (PIN required)',
             icon: Icon(
               _revealed
@@ -138,6 +147,15 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
                   child: CardCarousel(
                     cards: rows,
                     initialIndex: initial,
+                    // Turned over only while the reveal is live, so the clock in
+                    // requirement 13.8 turns the card back on its own.
+                    revealedCardId: _revealed ? card.id : null,
+                    // Tapping the card in front is the same request the control
+                    // in the app bar makes, and it goes through the same gate.
+                    // The card is the obvious thing to touch when you want what
+                    // is on the card, but it must not become a way around
+                    // App_Lock.
+                    onCardTap: (_) => _toggleReveal(),
                     onPageChanged: (value) {
                       // A new card in front never inherits the previous card's
                       // revealed digits, and the remask timer is cancelled so it

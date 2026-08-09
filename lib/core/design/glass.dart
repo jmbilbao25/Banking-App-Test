@@ -221,6 +221,19 @@ class Glass {
   static Glass of(BuildContext context) =>
       AppTokens.of(context).isDark ? dark : light;
 
+  /// The floating navigation bar, in both brightnesses.
+  ///
+  /// Pinned to the dark material rather than following the platform, and this is
+  /// the one place the material deliberately does not adapt. The bar is the only
+  /// surface that has to stay legible over the navy brand gradient at the top of
+  /// a screen *and* over the near white sheet at the bottom of the same screen.
+  /// The pale recipe cannot do the second job: over a white sheet its lift washes
+  /// go milky, the rim has nothing to grip, and the bar stops reading as an
+  /// object and starts reading as a smudge on the page. Dark glass with white
+  /// glyphs holds in both places, and it bookends the brand gradient instead of
+  /// competing with it.
+  static const Glass bar = dark;
+
   /// The panel tier. Cards that sit on the brand backdrop.
   static Glass panelOf(BuildContext context) => of(context).panel;
 

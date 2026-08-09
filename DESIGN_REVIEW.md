@@ -346,3 +346,84 @@ that makes that true is also what keeps the suite renderable. The geometry, the
 washes, the rim placement and the sheen are pinned by the goldens. **The
 refraction itself has only been verified as not throwing, and still needs to be
 looked at on a physical Impeller device.**
+
+
+## 11. Rendering it, which changed the answer twice
+
+Section 10 ended by admitting the goldens could not show the navigation bar,
+because every one of them pumps a screen directly rather than through the shell.
+That was not a good enough place to stop, so the application was built for web and
+driven in a real browser through the real router, the real session and the real
+App_Lock gate. The harness is committed at `tool/live_preview` with the two traps
+that cost the most time written down.
+
+Two defects turned up immediately, and neither was visible in any golden.
+
+**F10. The navigation bar disappeared in light mode.** Over the white sheet at the
+bottom of a light theme screen, the chrome tier's pale recipe went milky, the rim
+had nothing to grip, and the bar stopped reading as an object. It looked like a
+smudge on the page. This is the one surface that has to stay legible over the navy
+brand gradient at the top of a screen and the near white sheet at the bottom of
+the same screen, and a single adaptive recipe cannot do both jobs. `Glass.bar` now
+pins it to the dark material in both brightnesses, which also bookends the brand
+gradient rather than competing with it. This is the one place the material
+deliberately does not adapt, and the reason is written at the constant.
+
+**F11. Selection was still being stated twice.** Extending the capsule to all five
+slots in section 4 left the centre brand mark's beacon glow in place, so home was
+marked by a capsule *and* by a breathing brand coloured halo. On screen the halo
+won, and a glowing tile mounted in the middle of a bar reads as a primary action.
+The glow, its `AnimationController` and its two painters are deleted. The mark
+keeps the same lift the other four slots get. The bar now contains no ticker at
+all.
+
+Also found, not fixed, because it is copy rather than design and belongs to
+whoever owns the security flow: `PinLockScreen` shows "Enter your 6-digit security
+PIN to unlock" while it is asking you to **set** a PIN on first run, and again
+while it is asking you to **confirm** it. Three different jobs, one sentence.
+
+## 12. The card, turned over
+
+The brief asked for a card that flips in 3D to reveal its details. The interesting
+part was not the rotation.
+
+`BankCard` already carried `number`, `cvc`, `expiry` and `holderName`, and the doc
+comment on `number` already said "Only the last group is shown until the holder
+asks to reveal it." More importantly, revealing was **already gated**: requirement
+13.8 puts the full number behind App_Lock and re-masks it after ten seconds, and
+`CardDetailScreen` implemented that on a control in the app bar.
+
+So a tap-to-flip that toggled its own state would have been a way around App_Lock.
+Instead the flip renders the state that already exists. `CardCarousel` takes a
+`revealedCardId`, and `onCardTap` (a hook that existed but had no caller) routes
+into the same `_toggleReveal` the app bar control uses. One place asks for the PIN,
+one place starts the clock, and when the clock runs out the card turns back on its
+own. The gate was verified in the browser: tapping the card raises "Confirm with
+your PIN" and the digits stay hidden until it is answered.
+
+`CardBackFace` reuses the front's painter, colourway and milled hairline, so the
+object that turns over is unmistakably the same object. What changes is what it
+carries, placed where a real card puts it: the magnetic stripe near the top, the
+signature panel under it with the security code at its right hand end, the full
+number below in the same mono face the rest of the application sets figures in.
+The front is untouched.
+
+Two things came out of building it.
+
+**The flip is the one animation in the application that should be linear.** Every
+eased curve in the named set front loads its value. On `easeOutCubic` the flip
+crossed its halfway point at about a third of the duration, so the card showed its
+front for a third of the turn and spent the other two thirds bringing the back
+around. A test asserting which side faces the holder just before and just after
+the midpoint is what caught it, and that test now pins the curve. `Motion.linear`
+was already in the set, so this adds no fifth curve.
+
+**The back must not size itself.** It takes its box from its parent exactly as the
+front does, because the two swap inside one `FlipCard` and a back that computed its
+own height would change shape halfway through the turn. The first version of the
+golden proved why this needs saying: given a width and no height it stretched into
+a tall strip.
+
+Eight tests cover it, including the security property stated directly: an
+unrevealed card does not have its details sitting in the widget tree waiting to be
+read.

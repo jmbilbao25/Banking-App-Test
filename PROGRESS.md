@@ -277,3 +277,57 @@ failing.
 its frosted fallback path. The refraction, the rim's backdrop tinting and the
 chromatic separation are absent from the images by design. They have been verified
 as not throwing, and still need to be looked at on a device.
+
+
+## Wave: rendered, and the card turned over
+
+**The application is now driven in a real browser.** `tool/live_preview` builds for
+web and walks the real journey through the real router, session and App_Lock gate,
+writing screenshots. It exists because every golden pumps a screen directly, so
+none of them contained the navigation bar: the most visible glass in the
+application had no visual coverage, which is how it drifted into looking like a
+slab without anything failing.
+
+It found two defects on the first run, neither visible in any golden:
+
+- **The bar disappeared in light mode.** Over the white sheet its pale recipe went
+  milky and the rim had nothing to grip. `Glass.bar` pins the bar to the dark
+  material in both brightnesses, because it is the one surface that spans a navy
+  gradient and a white sheet in the same screen.
+- **Selection was stated twice.** Extending the capsule to all five slots left the
+  centre mark's beacon glow in place, and on screen the glow won. The glow, its
+  controller and its two painters are gone. There is now no ticker in the bar at
+  all.
+
+Two traps are written down in the harness README because they cost real time.
+Chrome's touch emulation must be off or raw `GestureDetector` controls silently
+swallow every tap while Material buttons keep working, which looks exactly like
+wrong coordinates. And the semantics tree only exists once Flutter believes
+assistive technology is present, which is worth having anyway: addressing a
+control by the label a screen reader would read means a passing step proves the
+control is both hittable and named.
+
+**The card turns over.** Tapping the card in front reveals its number, security
+code, expiry and holder on a real back face, on the same material and colourway as
+the front.
+
+The gate was the design problem, not the rotation. Requirement 13.8 already put
+the full number behind App_Lock with a ten second re-mask, so a flip that owned its
+own state would have been a way around it. `CardCarousel` takes a `revealedCardId`
+and `onCardTap` routes into the same `_toggleReveal` the app bar control uses: one
+place asks for the PIN, one place starts the clock, and the card turns back by
+itself when it expires. Verified in the browser, tapping the card raises "Confirm
+with your PIN" and the digits stay hidden until it is answered.
+
+The flip is linear, and it is the only animation here that should be. Eased curves
+front load their value, so on `easeOutCubic` the side swap landed at a third of the
+duration and the two halves of the turn were visibly different lengths. A test
+asserting which side faces the holder either side of the midpoint pins it.
+
+| Check | Before this wave | Now |
+| --- | --- | --- |
+| `flutter test` | 250 pass / 0 fail | **258 pass / 0 fail** |
+| Golden regression screens | 17 | **18** |
+| Screens verified in a real browser | 0 | **login, App_Lock, dashboard, cards, hub, profile** |
+| Tickers in the navigation bar | 1 | **0** |
+| Ways to reveal a card number | 1, gated | **2, one gate** |
